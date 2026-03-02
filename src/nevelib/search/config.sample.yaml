@@ -3,79 +3,49 @@
 
 # --- Input ---
 input:
-  query_fasta: "/path/to/scaffolds.fasta"   # Query FASTA to search
-  blast_db_prefix: "/path/to/blast/db/prefix"  # Primary BLAST DB prefix
+  fasta: "/path/to/query.fasta"       # Query sequences (FASTA)
 
 # --- Output ---
 output:
-  dir: "./search_output"                     # Output directory (created if absent)
+  dir: "./search_output"               # Output directory (created if absent)
 
-# --- Primary BLAST search ---
+# --- BLAST parameters ---
 blast:
-  mode: "blastn"                             # blastn | blastx
-  threads: 8
-  outfmt: "6 qseqid qstart qend sseqid sstart send evalue bitscore pident length qcovhsp"
-  evalue: 1e-6
-  max_target_seqs: 10
-  extra_params:
-    - "-task"
-    - "dc-megablast"
-    - "-perc_identity"
-    - "50"
-    - "-soft_masking"
-    - "true"
-    - "-dust"
-    - "yes"
-    - "-max_hsps"
-    - "3"
+  program: "blastn"                    # BLAST program: 'blastn' or 'blastx'
+  db_prefix: "/path/to/blast_db"      # BLAST database prefix
+  evalue: 1e-5                         # E-value threshold
+  max_target_seqs: 10                  # Maximum target sequences per query
+  perc_identity: null                  # Minimum percent identity (null = no filter)
+  threads: 4                           # Number of threads
+  outfmt_fields: null                  # Custom outfmt 6 fields (null = default 14 fields)
+  extra_args: null                     # Additional BLAST CLI arguments (list of strings)
+  db_type: "nucl"                      # Database type: 'nucl' or 'prot'
+  require_taxonomy: false              # Require taxonomy sidecar files
 
-# --- Hit parsing and filtering ---
-hits:
-  min_len: 80                                 # Minimum alignment length
-  min_overlap_frac: 0.8                       # Region collapse overlap threshold
-  bitscore_top_frac: 0.90                     # Keep hits >= fraction of top bitscore
-  prune_contained_intervals: true
+# --- Post-BLAST filtering ---
+filtering:
+  min_pident: null                     # Minimum percent identity (null = no filter)
+  min_length: null                     # Minimum alignment length (null = no filter)
+  max_evalue: null                     # Maximum E-value (null = no filter)
+  min_bitscore: null                   # Minimum bitscore (null = no filter)
 
-# --- Taxonomy classification (RefSeq-like validation) ---
+# --- Taxonomic classification (optional) ---
 classification:
-  blastdb_dir: "/path/to/refseq/blastdb"     # Directory exported as BLASTDB
-  refseq_db: "core_nt"                        # Override DB prefix for taxonomy validation
-  task: "blastn"
-  chunk_size_queries: 200
-  max_hsps: 1
-  dust: "yes"
-  soft_masking: "true"
-  outfmt_fields:                               # Fields used by taxonomy classification
-    - "qseqid"
-    - "sacc"
-    - "pident"
-    - "length"
-    - "evalue"
-    - "bitscore"
-    - "stitle"
-    - "staxids"
-    - "sscinames"
-    - "sskingdoms"
-  rule: "top_hit_viral"                       # any_hit_viral | top_hit_viral
-  viral_keyword_fallback_enabled: true
-
-# --- Compression ---
-compression:
-  compressor: "pigz"
-  threads: 4
-  level: 6
-  fallback: "gzip"
+  enabled: false                       # Enable taxonomy-based classification
+  taxonomy_col: "staxids"             # Column containing taxonomy IDs
+  rule: "majority"                     # Classification rule: 'majority', 'any', 'all'
+  keywords: []                         # Keywords for positive classification
+  keyword_fallback: false              # Fall back to title keyword matching
+  bitscore_top_fraction: 0.9           # Keep hits within this fraction of top bitscore
 
 # --- Validation ---
 validation:
-  skip_input: false
-  skip_output: false
-  strict: true
+  skip_input: false                    # Skip input validation
+  skip_output: false                   # Skip output validation
+  strict: true                         # Raise on warnings
 
 # --- External tools ---
 tools:
   blastn: "blastn"
   blastx: "blastx"
   makeblastdb: "makeblastdb"
-  pigz: "pigz"
-  gzip: "gzip"
