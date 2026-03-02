@@ -3,54 +3,30 @@
 
 # --- Input ---
 input:
-  fasta: "/path/to/mmseqs_input.fasta"       # Input sequences for clustering
-  all_ids: "/path/to/all_ids.txt"            # Optional newline-separated expected IDs
+  fasta: "/path/to/sequences.fasta"   # Input FASTA (nucleotide or protein)
 
 # --- Output ---
 output:
-  dir: "./clustering_output"                  # Output directory (created if absent)
-  prefix: "mmseqs_linclust"                   # Prefix for MMseqs outputs
+  dir: "./clustering_output"           # Output directory (created if absent)
+  prefix: "linclust"                   # MMseqs2 output prefix
 
-# --- MMseqs2 clustering ---
+# --- MMseqs2 parameters ---
 mmseqs:
-  exec: "mmseqs"
-  threads: 48
-  min_seq_id: 0.90
-  min_aln_len: 80
-  coverage: 0.8
-  cov_mode: 5
-  alignment_mode: 3
-  split_memory_limit: "260G"
-  tmp_dir_name: "mmseqs_tmp"
+  exec: "mmseqs"                       # MMseqs2 binary name or path
+  min_seq_id: 0.9                      # Minimum sequence identity (0.0-1.0)
+  coverage: 0.8                        # Minimum coverage (0.0-1.0)
+  cov_mode: 0                          # Coverage mode (0=bidirectional, 1=target, 2=query, 3=target-in-query)
+  alignment_mode: 3                    # Alignment mode (3=full alignment)
+  threads: 4                           # Number of threads
+  min_aln_len: 0                       # Minimum alignment length (0=no filter)
+  split_memory_limit: null             # Memory limit for split (e.g., "260G", null=no limit)
+  tmp_dir_name: "mmseqs_tmp"           # Temporary directory name
 
-# --- Global clustering compatibility (Stage 05-like settings) ---
-global:
-  output_population_dir: "global"             # Used when clustering across populations
-  min_len: 80                                  # Minimum sequence length to include
-  populations_include: []                      # Optional allow-list
-  populations_exclude: ["logs", "global", ".git"]
-  resume: false
-
-# --- ID assignment ---
-id_assignment:
-  deterministic: true                          # Sort representatives before numbering
-  start_id: 1
-
-# --- Compression ---
-compression:
-  compressor: "pigz"
-  threads: 4
-  level: 6
-  fallback: "gzip"
+# --- Resume ---
+resume: false                          # If true, reuse existing cluster TSV if valid
 
 # --- Validation ---
 validation:
-  skip_input: false
-  skip_output: false
-  strict: true
-
-# --- External tools ---
-tools:
-  mmseqs: "mmseqs"
-  pigz: "pigz"
-  gzip: "gzip"
+  skip_input: false                    # Skip input FASTA validation
+  skip_output: false                   # Skip output validation
+  strict: true                         # Raise on warnings (false = log and continue)
