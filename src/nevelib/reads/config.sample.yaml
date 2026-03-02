@@ -1,0 +1,56 @@
+# nevelib reads module configuration
+# Usage: nevelib-reads config.yaml
+
+# --- Input ---
+input:
+  bam: "/path/to/input.bam"  # Input BAM file (coordinate-sorted, indexed)
+
+# --- Output ---
+output:
+  dir: "./reads_output"       # Output directory (created if absent)
+
+# --- Read extraction ---
+extraction:
+  threads: 8
+  mapq_min: 0                 # Minimum MAPQ for mapped-read filtering
+  insert_size_filter:
+    enabled: false             # Enable insert-size outlier detection
+    mad_z: 3.0                # Z-score threshold for MAD-based filtering
+    min_pairs: 1000           # Minimum pairs needed to compute band
+    percentile: 99.5          # Percentile for fallback threshold
+
+# --- Quality trimming ---
+trimming:
+  enabled: true
+  tool: "fastp"               # Trimming tool: 'fastp'
+  threads: 8
+  min_length: 50              # Minimum read length after trimming
+  qualified_quality_phred: 20 # Minimum quality for a base to pass
+
+# --- QC reporting ---
+qc:
+  enabled: true
+  tool: "fastqc"              # QC reporting tool: 'fastqc' or 'fastp'
+  threads: 4
+
+# --- Compression ---
+compression:
+  compressor: "pigz"          # Compressor binary (pigz or gzip)
+  threads: 4
+  level: 6
+  fallback: "gzip"
+
+# --- Validation ---
+validation:
+  skip_input: false            # Skip input file validation
+  skip_output: false           # Skip output file validation
+  strict: true                 # Raise on warnings (false = log and continue)
+
+# --- External tools ---
+tools:
+  samtools: "samtools"
+  fastp: "fastp"
+  fastqc: "fastqc"
+  pigz: "pigz"
+  gzip: "gzip"
+  gawk: "gawk"

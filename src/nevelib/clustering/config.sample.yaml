@@ -1,0 +1,56 @@
+# nevelib clustering module configuration
+# Usage: nevelib-clustering config.yaml
+
+# --- Input ---
+input:
+  fasta: "/path/to/mmseqs_input.fasta"       # Input sequences for clustering
+  all_ids: "/path/to/all_ids.txt"            # Optional newline-separated expected IDs
+
+# --- Output ---
+output:
+  dir: "./clustering_output"                  # Output directory (created if absent)
+  prefix: "mmseqs_linclust"                   # Prefix for MMseqs outputs
+
+# --- MMseqs2 clustering ---
+mmseqs:
+  exec: "mmseqs"
+  threads: 48
+  min_seq_id: 0.90
+  min_aln_len: 80
+  coverage: 0.8
+  cov_mode: 5
+  alignment_mode: 3
+  split_memory_limit: "260G"
+  tmp_dir_name: "mmseqs_tmp"
+
+# --- Global clustering compatibility (Stage 05-like settings) ---
+global:
+  output_population_dir: "global"             # Used when clustering across populations
+  min_len: 80                                  # Minimum sequence length to include
+  populations_include: []                      # Optional allow-list
+  populations_exclude: ["logs", "global", ".git"]
+  resume: false
+
+# --- ID assignment ---
+id_assignment:
+  deterministic: true                          # Sort representatives before numbering
+  start_id: 1
+
+# --- Compression ---
+compression:
+  compressor: "pigz"
+  threads: 4
+  level: 6
+  fallback: "gzip"
+
+# --- Validation ---
+validation:
+  skip_input: false
+  skip_output: false
+  strict: true
+
+# --- External tools ---
+tools:
+  mmseqs: "mmseqs"
+  pigz: "pigz"
+  gzip: "gzip"

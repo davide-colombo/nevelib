@@ -1,0 +1,54 @@
+# nevelib mapping module configuration
+# Usage: nevelib-mapping config.yaml
+
+# --- Input ---
+input:
+  reference_fasta: "/path/to/reference.fasta"     # Reference FASTA for minimap2
+  query_fasta: "/path/to/query.fasta"             # Query FASTA/FASTQ for mapping
+
+# --- Output ---
+output:
+  dir: "./mapping_output"                         # Output directory (created if absent)
+  paf: "alignments.paf"                           # Primary PAF output filename
+
+# --- Minimap2 mapping ---
+minimap2:
+  preset: "asm5"                                  # Stage-06 flank default; use 'sr' for short reads
+  threads: 4
+  include_secondary: true
+  extra_args: []
+
+# --- Flank-style mapping controls (Stage 06) ---
+flanks:
+  enabled: true
+  flank_len: 500
+  min_flank_len: 80
+  min_mapq: 20
+  minimap2_preset: "asm5"
+  minimap2_extra_args: []
+
+# --- Anchor selection thresholds (Stage 07) ---
+anchor_selection:
+  min_mapq: 20
+  min_aln_len: 25
+  min_nmatch: 0
+
+# --- Compression ---
+compression:
+  compressor: "pigz"
+  threads: 4
+  level: 6
+  fallback: "gzip"
+
+# --- Validation ---
+validation:
+  skip_input: false
+  skip_output: false
+  strict: true
+
+# --- External tools ---
+tools:
+  minimap2: "minimap2"
+  samtools: "samtools"
+  pigz: "pigz"
+  gzip: "gzip"

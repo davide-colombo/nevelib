@@ -1,0 +1,81 @@
+# nevelib search module configuration
+# Usage: nevelib-search config.yaml
+
+# --- Input ---
+input:
+  query_fasta: "/path/to/scaffolds.fasta"   # Query FASTA to search
+  blast_db_prefix: "/path/to/blast/db/prefix"  # Primary BLAST DB prefix
+
+# --- Output ---
+output:
+  dir: "./search_output"                     # Output directory (created if absent)
+
+# --- Primary BLAST search ---
+blast:
+  mode: "blastn"                             # blastn | blastx
+  threads: 8
+  outfmt: "6 qseqid qstart qend sseqid sstart send evalue bitscore pident length qcovhsp"
+  evalue: 1e-6
+  max_target_seqs: 10
+  extra_params:
+    - "-task"
+    - "dc-megablast"
+    - "-perc_identity"
+    - "50"
+    - "-soft_masking"
+    - "true"
+    - "-dust"
+    - "yes"
+    - "-max_hsps"
+    - "3"
+
+# --- Hit parsing and filtering ---
+hits:
+  min_len: 80                                 # Minimum alignment length
+  min_overlap_frac: 0.8                       # Region collapse overlap threshold
+  bitscore_top_frac: 0.90                     # Keep hits >= fraction of top bitscore
+  prune_contained_intervals: true
+
+# --- Taxonomy classification (RefSeq-like validation) ---
+classification:
+  blastdb_dir: "/path/to/refseq/blastdb"     # Directory exported as BLASTDB
+  refseq_db: "core_nt"                        # Override DB prefix for taxonomy validation
+  task: "blastn"
+  chunk_size_queries: 200
+  max_hsps: 1
+  dust: "yes"
+  soft_masking: "true"
+  outfmt_fields:                               # Fields used by taxonomy classification
+    - "qseqid"
+    - "sacc"
+    - "pident"
+    - "length"
+    - "evalue"
+    - "bitscore"
+    - "stitle"
+    - "staxids"
+    - "sscinames"
+    - "sskingdoms"
+  rule: "top_hit_viral"                       # any_hit_viral | top_hit_viral
+  viral_keyword_fallback_enabled: true
+
+# --- Compression ---
+compression:
+  compressor: "pigz"
+  threads: 4
+  level: 6
+  fallback: "gzip"
+
+# --- Validation ---
+validation:
+  skip_input: false
+  skip_output: false
+  strict: true
+
+# --- External tools ---
+tools:
+  blastn: "blastn"
+  blastx: "blastx"
+  makeblastdb: "makeblastdb"
+  pigz: "pigz"
+  gzip: "gzip"

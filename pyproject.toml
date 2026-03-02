@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "nevelib"
+version = "0.1.0"
+description = "A modular bioinformatics library for genomic sequence analysis: read extraction, assembly, homology search, clustering, multiple sequence alignment, and read mapping."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "Davide Colombo" },
+]
+keywords = ["bioinformatics", "genomics", "blast", "assembly", "clustering", "alignment"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+]
+
+dependencies = [
+    "pyyaml>=6.0",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "biopython>=1.83",
+    "pyfaidx>=0.8",
+]
+
+[project.optional-dependencies]
+confirm = ["pysam>=0.22"]
+viz = ["matplotlib>=3.9", "seaborn>=0.13"]
+all = ["nevelib[confirm,viz]"]
+dev = [
+    "nevelib[all]",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+[project.scripts]
+nevelib-reads = "nevelib.reads.cli:main"
+nevelib-assembly = "nevelib.assembly.cli:main"
+nevelib-search = "nevelib.search.cli:main"
+nevelib-clustering = "nevelib.clustering.cli:main"
+nevelib-msa = "nevelib.msa.cli:main"
+nevelib-mapping = "nevelib.mapping.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nevelib"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/nevelib/tests"]

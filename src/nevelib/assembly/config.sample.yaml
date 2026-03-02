@@ -1,0 +1,86 @@
+# nevelib assembly module configuration
+# Usage: nevelib-assembly config.yaml
+
+# --- Input ---
+input:
+  r1: "/path/to/R1.fq.gz"          # Input R1 FASTQ from reads module
+  r2: "/path/to/R2.fq.gz"          # Input R2 FASTQ from reads module
+  singleton: "/path/to/singletons.fq.gz"  # Optional singleton FASTQ (can be null)
+
+# --- Output ---
+output:
+  dir: "./assembly_output"          # Output directory (created if absent)
+
+# --- Digital normalization ---
+normalization:
+  enabled: true
+  tool: "bbnorm"                    # Normalizer key (resolved via tools.bbnorm)
+  normalizer_exec: "bbnorm.sh"      # BBTools normalizer executable
+  threads: 16
+  java_xmx_gb: 64
+  pigz_threads: 8
+  target_coverage: 10
+  extra_args: []                     # Extra BBnorm arguments
+  tmp_root: null                     # Optional temporary root (must exist if set)
+
+# --- De novo assembly (SPAdes) ---
+spades:
+  threads: 16
+  memory_gb: 220
+  k: "33,55"                        # SPAdes k-mer sizes
+  resume: false
+  min_contig_len: 151
+  length_filter:
+    mode: null                       # null | "percentile" | "nxx"
+    value: null                      # Value paired with mode
+  qc_enabled: true
+  extra_args: ["--only-assembler", "--disable-gzip-output"]
+  tmp_dir: null                      # Optional explicit SPAdes temporary directory
+
+# --- Coverage filtering ---
+coverage_filter:
+  enabled: true
+  threads: 16
+  preset: "sr"                      # minimap2 preset for short reads
+  min_mean_coverage: 2.0
+  window_size: 100
+  min_windows_for_shape: 5
+  min_window_coverage: 1.0
+  min_fraction_high_cov: 0.6
+  short_min_mean_coverage: 1.5
+  extra_minimap2_args: []
+  extra_mosdepth_args: []
+
+# --- Scaffold deduplication ---
+dedup:
+  enabled: false
+  threads: 8
+  evalue: 1e-20
+  max_target_seqs: 100
+  qc_enabled: true
+  extra_params: []
+
+# --- Compression ---
+compression:
+  compressor: "pigz"
+  threads: 4
+  level: 6
+  fallback: "gzip"
+
+# --- Validation ---
+validation:
+  skip_input: false
+  skip_output: false
+  strict: true
+
+# --- External tools ---
+tools:
+  bbnorm: "bbnorm.sh"
+  spades: "spades.py"
+  minimap2: "minimap2"
+  mosdepth: "mosdepth"
+  blastn: "blastn"
+  makeblastdb: "makeblastdb"
+  samtools: "samtools"
+  pigz: "pigz"
+  gzip: "gzip"
