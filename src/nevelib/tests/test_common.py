@@ -7,10 +7,12 @@ import subprocess
 
 import pytest
 
+from nevelib._common.bam import validate_bam
 from nevelib._common.blast_db import validate_blast_db
 from nevelib._common.compression import CompressionConfig, compress, decompress, validate_gzip
 from nevelib._common.config import load_config, merge_defaults, validate_required_keys
 from nevelib._common.fasta import iter_fasta_records, validate_fasta, write_fasta
+from nevelib._common.fastq import validate_fastq, validate_paired_fastq
 from nevelib._common.toolrun import check_tool, run_tool
 from nevelib._common.tsv import validate_tsv
 
@@ -323,3 +325,146 @@ def test_compress_decompress_roundtrip(
     compress(src, gz, cfg)
     decompress(gz, out, cfg)
     assert out.read_text(encoding="utf-8") == src.read_text(encoding="utf-8")
+
+
+def test_validate_bam_rejects_missing_file(tmp_path: Path) -> None:
+    """Missing BAM path is reported as invalid."""
+    result = validate_bam(tmp_path / "missing.bam")
+    assert result.valid is False
+    assert result.errors
+
+
+def test_validate_bam_detects_missing_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Missing BAM index fails validation when required."""
+    bam = tmp_path / "input.bam"
+    bam.write_bytes(b"BAM")
+
+    monkeypatch.setattr(
+        "nevelib._common.bam.check_tool",
+        lambda *_a, **_k: type("T", (), {"available": False})(),
+    )
+
+    result = validate_bam(bam, require_sorted=False, require_index=True, run_quickcheck=False)
+    assert result.valid is False
+    assert any("index" in err.lower() for err in result.errors)
+
+
+def test_validate_bam_accepts_with_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """BAM with index and passing samtools checks validates successfully."""
+    bam = tmp_path / "input.bam"
+    bam.write_bytes(b"BAM")
+    bam.with_suffix(".bam.bai").write_bytes(b"BAI")
+
+    monkeypatch.setattr(
+        "nevelib._common.bam.check_tool",
+        lambda *_a, **_k: type("T", (), {"available": True})(),
+    )
+
+    def _fake_run_tool(cmd, **_kwargs):
+        if cmd[:3] == ["samtools", "view", "-H"]:
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="@HD\tVN:1.6\tSO:coordinate\n", stderr="")
+        if cmd[:2] == ["samtools", "quickcheck"]:
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+        raise AssertionError(f"Unexpected command: {cmd}")
+
+    monkeypatch.setattr("nevelib._common.bam.run_tool", _fake_run_tool)
+
+    result = validate_bam(bam, require_sorted=True, require_index=True, run_quickcheck=True)
+    assert result.valid is True
+    assert result.has_index is True
+    assert result.is_sorted is True
+    assert result.is_truncated is False
+
+
+def test_validate_bam_quickcheck_not_available(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Missing samtools degrades gracefully for quickcheck validation."""
+    bam = tmp_path / "input.bam"
+    bam.write_bytes(b"BAM")
+    bam.with_suffix(".bam.bai").write_bytes(b"BAI")
+
+    monkeypatch.setattr(
+        "nevelib._common.bam.check_tool",
+        lambda *_a, **_k: type("T", (), {"available": False})(),
+    )
+
+    result = validate_bam(bam, require_sorted=False, require_index=False, run_quickcheck=True)
+    assert result.valid is True
+    assert any("quickcheck" in warning.lower() for warning in result.warnings)
+
+
+def test_validate_fastq_rejects_missing_file(tmp_path: Path) -> None:
+    """Missing FASTQ path is reported as invalid."""
+    result = validate_fastq(tmp_path / "missing.fq.gz")
+    assert result.valid is False
+    assert result.errors
+
+
+def test_validate_fastq_accepts_valid_uncompressed(tmp_path: Path) -> None:
+    """Well-formed uncompressed FASTQ validates with correct read count."""
+    fq = tmp_path / "reads.fq"
+    fq.write_text(
+        "@r1\nACGT\n+\nIIII\n@r2\nTGCA\n+\nIIII\n",
+        encoding="utf-8",
+    )
+
+    result = validate_fastq(fq, check_gzip=False, check_nonempty=True)
+    assert result.valid is True
+    assert result.read_count == 2
+
+
+def test_validate_fastq_accepts_valid_gzipped(tmp_path: Path) -> None:
+    """Well-formed gzipped FASTQ validates successfully."""
+    import gzip
+
+    fq = tmp_path / "reads.fq.gz"
+    with gzip.open(fq, "wt", encoding="utf-8") as handle:
+        handle.write("@r1\nACGT\n+\nIIII\n")
+
+    result = validate_fastq(fq, check_gzip=True, check_nonempty=True)
+    assert result.valid is True
+    assert result.read_count == 1
+
+
+def test_validate_fastq_detects_empty(tmp_path: Path) -> None:
+    """Empty FASTQ fails non-empty validation."""
+    fq = tmp_path / "empty.fq"
+    fq.write_text("", encoding="utf-8")
+
+    result = validate_fastq(fq, check_nonempty=True, min_reads=1)
+    assert result.valid is False
+    assert any("minimum required" in err.lower() for err in result.errors)
+
+
+def test_validate_fastq_encoding_detection_phred33(tmp_path: Path) -> None:
+    """Encoding detector identifies Phred+33 quality strings."""
+    fq = tmp_path / "reads.fq"
+    fq.write_text("@r1\nACGT\n+\n!\"#$\n", encoding="utf-8")
+
+    result = validate_fastq(fq, check_gzip=False, check_nonempty=True, check_encoding=True)
+    assert result.valid is True
+    assert result.encoding == "phred33"
+
+
+def test_validate_paired_fastq_sync_check(tmp_path: Path) -> None:
+    """Synchronized paired FASTQ headers pass sync validation."""
+    r1 = tmp_path / "R1.fq"
+    r2 = tmp_path / "R2.fq"
+    r1.write_text("@readA/1\nACGT\n+\nIIII\n@readB/1\nTGCA\n+\nIIII\n", encoding="utf-8")
+    r2.write_text("@readA/2\nTGCA\n+\nIIII\n@readB/2\nACGT\n+\nIIII\n", encoding="utf-8")
+
+    res1, res2 = validate_paired_fastq(r1, r2, check_sync=True, check_gzip=False)
+    assert res1.valid is True
+    assert res2.valid is True
+
+
+def test_validate_paired_fastq_detects_desync(tmp_path: Path) -> None:
+    """Desynchronized paired FASTQ headers fail sync validation."""
+    r1 = tmp_path / "R1.fq"
+    r2 = tmp_path / "R2.fq"
+    r1.write_text("@readA/1\nACGT\n+\nIIII\n", encoding="utf-8")
+    r2.write_text("@readB/2\nTGCA\n+\nIIII\n", encoding="utf-8")
+
+    res1, res2 = validate_paired_fastq(r1, r2, check_sync=True, check_gzip=False)
+    assert res1.valid is False
+    assert res2.valid is False
+    assert any("mismatch" in err.lower() for err in res1.errors + res2.errors)

@@ -1,10 +1,11 @@
-"""BAM file validation and quality control.
+"""BAM file validation and basic integrity checks."""
 
-Called by the reads module before read extraction.
-"""
+from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from nevelib._common.toolrun import check_tool, run_tool
 
 
 @dataclass
@@ -30,6 +31,11 @@ class BamValidationResult:
     is_truncated: bool = False
 
 
+def _resolve_bai_candidates(path: Path) -> tuple[Path, Path]:
+    """Return supported BAM index path candidates."""
+    return path.with_suffix(path.suffix + ".bai"), path.with_suffix(".bai")
+
+
 def validate_bam(
     path: Path,
     *,
@@ -48,4 +54,73 @@ def validate_bam(
     Returns:
         BamValidationResult with validation outcome.
     """
-    raise NotImplementedError
+    result = BamValidationResult(valid=True, path=path)
+
+    if not path.exists():
+        result.valid = False
+        result.errors.append(f"BAM file not found: {path}")
+        return result
+
+    if not path.is_file():
+        result.valid = False
+        result.errors.append(f"BAM path is not a regular file: {path}")
+        return result
+
+    bai_a, bai_b = _resolve_bai_candidates(path)
+    result.has_index = bai_a.exists() or bai_b.exists()
+    if require_index and not result.has_index:
+        result.valid = False
+        result.errors.append(f"Missing BAM index (.bai): expected {bai_a} or {bai_b}")
+
+    samtools = check_tool("samtools", version_args=["--version"])
+
+    if require_sorted:
+        if samtools.available:
+            proc = run_tool(["samtools", "view", "-H", str(path)], check=False)
+            if proc.returncode != 0:
+                result.valid = False
+                err = (proc.stderr or "").strip()
+                result.errors.append(f"samtools view -H failed for {path}: {err or 'unknown error'}")
+            else:
+                header = proc.stdout or ""
+                sort_order: str | None = None
+                for line in header.splitlines():
+                    if not line.startswith("@HD"):
+                        continue
+                    for field in line.split("\t"):
+                        if field.startswith("SO:"):
+                            sort_order = field.split(":", 1)[1].strip()
+                            break
+                    if sort_order is not None:
+                        break
+                result.is_sorted = sort_order == "coordinate"
+                if not result.is_sorted:
+                    result.valid = False
+                    result.errors.append(
+                        "BAM sort order is not coordinate (missing or non-coordinate @HD SO tag)."
+                    )
+        else:
+            result.warnings.append(
+                "samtools not available: skipping BAM header sort-order check and assuming coordinate-sorted."
+            )
+            result.is_sorted = True
+    else:
+        result.is_sorted = True
+
+    if run_quickcheck:
+        if samtools.available:
+            proc = run_tool(["samtools", "quickcheck", str(path)], check=False)
+            if proc.returncode != 0:
+                result.is_truncated = True
+                result.valid = False
+                err = (proc.stderr or "").strip()
+                result.errors.append(
+                    f"samtools quickcheck failed for {path}: {err or 'quickcheck reported an error'}"
+                )
+        else:
+            result.warnings.append("samtools not available: skipping BAM quickcheck integrity test.")
+
+    if result.errors:
+        result.valid = False
+
+    return result
