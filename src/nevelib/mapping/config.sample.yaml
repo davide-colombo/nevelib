@@ -3,52 +3,32 @@
 
 # --- Input ---
 input:
-  reference_fasta: "/path/to/reference.fasta"     # Reference FASTA for minimap2
-  query_fasta: "/path/to/query.fasta"             # Query FASTA/FASTQ for mapping
+  query: "/path/to/query.fasta"         # Query sequences (FASTA)
+  reference: "/path/to/reference.fasta"  # Reference sequences (FASTA)
 
 # --- Output ---
 output:
-  dir: "./mapping_output"                         # Output directory (created if absent)
-  paf: "alignments.paf"                           # Primary PAF output filename
+  dir: "./mapping_output"                # Output directory (created if absent)
+  paf_filename: "alignments.paf"        # PAF output filename
+  summary_filename: "alignment_summary.tsv"  # Best-hit summary TSV filename
 
-# --- Minimap2 mapping ---
+# --- minimap2 parameters ---
 minimap2:
-  preset: "asm5"                                  # Stage-06 flank default; use 'sr' for short reads
-  threads: 4
-  include_secondary: true
-  extra_args: []
+  exec: "minimap2"                       # minimap2 binary name or path
+  threads: 4                             # Number of threads
+  preset: "asm5"                         # Preset: 'map-ont', 'asm5', 'asm10', 'sr', etc. (null = no preset)
+  extra_args: null                       # Additional CLI arguments (list of strings)
+  output_format: "paf"                   # Output format: 'paf' or 'sam'
 
-# --- Flank-style mapping controls (Stage 06) ---
-flanks:
-  enabled: true
-  flank_len: 500
-  min_flank_len: 80
-  min_mapq: 20
-  minimap2_preset: "asm5"
-  minimap2_extra_args: []
-
-# --- Anchor selection thresholds (Stage 07) ---
-anchor_selection:
-  min_mapq: 20
-  min_aln_len: 25
-  min_nmatch: 0
-
-# --- Compression ---
-compression:
-  compressor: "pigz"
-  threads: 4
-  level: 6
-  fallback: "gzip"
+# --- Post-alignment filtering ---
+filtering:
+  min_mapq: null                         # Minimum mapping quality (null = no filter)
+  min_aln_len: null                      # Minimum alignment length (null = no filter)
+  min_nmatch: null                       # Minimum matching bases (null = no filter)
+  min_identity: null                     # Minimum identity nmatch/aln_len (null = no filter)
 
 # --- Validation ---
 validation:
-  skip_input: false
-  skip_output: false
-  strict: true
-
-# --- External tools ---
-tools:
-  minimap2: "minimap2"
-  samtools: "samtools"
-  pigz: "pigz"
-  gzip: "gzip"
+  skip_input: false                      # Skip input FASTA validation
+  skip_output: false                     # Skip output validation
+  strict: true                           # Raise on warnings
