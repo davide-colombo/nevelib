@@ -3,51 +3,32 @@
 
 # --- Input ---
 input:
-  seed_fasta: "/path/to/seed_viral_cores.fasta"  # Seed sequences for MAFFT
-  add_fasta: "/path/to/additional_viral_cores.fasta"  # Optional addfragments FASTA
+  fasta: "/path/to/sequences.fasta"     # Primary input FASTA (required)
+  add_fasta: null                        # Additional sequences to add to seed alignment (optional)
 
 # --- Output ---
 output:
-  dir: "./msa_output"                             # Output directory (created if absent)
-  alignment_fasta: "viral_cores.aln.fasta"        # Alignment output filename
+  dir: "./msa_output"                    # Output directory (created if absent)
+  alignment_filename: "alignment.fasta"  # Output aligned FASTA filename
+  metrics_filename: "alignment_metrics.tsv"  # Output metrics filename
 
-# --- MAFFT execution ---
+# --- MAFFT parameters ---
 mafft:
-  threads: 4
-  seed_n: 20                                       # Stage-06 seed subset size hint
-  extra_args: []                                   # Additional MAFFT arguments
+  exec: "mafft"                          # MAFFT binary name or path
+  threads: 4                             # Number of threads
+  auto: true                             # Use --auto mode for strategy selection
+  extra_args: null                       # Additional MAFFT CLI arguments (list of strings)
 
-# --- Viral coherence metrics ---
-viral:
-  min_core_len: 80                                 # Minimum viral-core length included in metrics
-  occupancy_p: 0.60                                # Shared-span occupancy threshold
-
-# --- Thresholds (Stage 06 style) ---
-thresholds:
-  viral_shared_span_min_bp: 80
-  viral_median_identity_min: 0.80
-  viral_frac_core_ge_min: 0.60
-  flank_modal_frac_min: 0.70
-  insertion_modal_frac_min: 0.60
-  te_cov_high: 0.50
-
-# --- Compression ---
-compression:
-  compressor: "pigz"
-  threads: 4
-  level: 6
-  fallback: "gzip"
+# --- Alignment quality metrics ---
+metrics:
+  enabled: true                          # Compute alignment quality metrics
+  occupancy_threshold: 0.5               # Min fraction of non-gap chars for a column to be "occupied"
+  min_identity: 0.7                      # Min mean pairwise identity to pass
+  min_coverage: 0.5                      # Min mean coverage to pass
+  min_seq_length: 0                      # Min original sequence length for coverage calculation
 
 # --- Validation ---
 validation:
-  skip_input: false
-  skip_output: false
-  strict: true
-
-# --- External tools ---
-tools:
-  mafft: "mafft"
-  minimap2: "minimap2"
-  blastn: "blastn"
-  pigz: "pigz"
-  gzip: "gzip"
+  skip_input: false                      # Skip input FASTA validation
+  skip_output: false                     # Skip output validation
+  strict: true                           # Raise on warnings
