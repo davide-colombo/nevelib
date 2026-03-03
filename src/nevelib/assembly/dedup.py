@@ -18,18 +18,25 @@ class DedupConfig:
         blastn_exec: blastn binary.
         makeblastdb_exec: makeblastdb binary.
         evalue: E-value threshold for self-BLAST.
-        pident_min: Minimum percent identity for a containment hit.
-        min_coverage_fraction: Minimum fraction of the shorter contig covered
-            by the alignment to consider it contained.
+        task: BLAST task mode.
+        word_size: BLAST word size.
+        perc_identity: Required percent identity.
+        qcov_hsp_perc: Required query coverage percent.
+        max_target_seqs: Maximum targets per query (minimum effective value: 2).
         threads: Number of threads.
+        extra_args: Additional blastn CLI arguments.
     """
 
     blastn_exec: str = "blastn"
     makeblastdb_exec: str = "makeblastdb"
-    evalue: float = 1e-10
-    pident_min: float = 95.0
-    min_coverage_fraction: float = 0.95
-    threads: int = 4
+    evalue: float = 1e-20
+    task: str = "megablast"
+    word_size: int = 28
+    perc_identity: float = 100.0
+    qcov_hsp_perc: float = 100.0
+    max_target_seqs: int = 100
+    threads: int = 8
+    extra_args: list[str] | None = None
 
 
 @dataclass
@@ -59,9 +66,9 @@ def _extract_stderr(exc: subprocess.CalledProcessError) -> str:
     return (stderr or "").strip()
 
 
-def _parse_self_blast_tsv(path: Path) -> list[tuple[str, str, float, int, int, int]]:
-    """Parse self-BLAST outfmt 6 rows used for containment filtering."""
-    rows: list[tuple[str, str, float, int, int, int]] = []
+def _parse_self_blast_csv(path: Path) -> list[tuple[str, int, str, int]]:
+    """Parse self-BLAST outfmt 10 rows used for containment filtering."""
+    rows: list[tuple[str, int, str, int]] = []
     if not path.exists():
         return rows
 
@@ -70,55 +77,37 @@ def _parse_self_blast_tsv(path: Path) -> list[tuple[str, str, float, int, int, i
             line = raw.strip()
             if not line:
                 continue
-            parts = line.split("\t")
-            if len(parts) < 12:
+            parts = [part.strip() for part in line.split(",")]
+            if len(parts) < 4:
                 continue
             qseqid = parts[0]
-            sseqid = parts[1]
+            sseqid = parts[2]
             try:
-                pident = float(parts[2])
-                aln_len = int(float(parts[3]))
-                qlen = int(float(parts[4]))
-                slen = int(float(parts[5]))
+                qlen = int(float(parts[1]))
+                slen = int(float(parts[3]))
             except ValueError:
                 continue
-            rows.append((qseqid, sseqid, pident, aln_len, qlen, slen))
+            rows.append((qseqid, qlen, sseqid, slen))
 
     return rows
 
 
 def _select_contigs_to_remove(
-    blast_rows: list[tuple[str, str, float, int, int, int]],
+    blast_rows: list[tuple[str, int, str, int]],
     *,
-    pident_min: float,
-    min_coverage_fraction: float,
     known_ids: set[str],
 ) -> set[str]:
-    """Select contigs to remove based on containment relationships."""
+    """Select contigs to remove based on NextEVE containment relationships."""
     removed: set[str] = set()
 
-    for qseqid, sseqid, pident, aln_len, qlen, slen in blast_rows:
+    for qseqid, qlen, sseqid, slen in blast_rows:
         if qseqid == sseqid:
             continue
         if qseqid not in known_ids or sseqid not in known_ids:
             continue
-        if pident < pident_min:
+        if slen < qlen:
             continue
-
-        shorter = min(qlen, slen)
-        if shorter <= 0:
-            continue
-        coverage_fraction = float(aln_len) / float(shorter)
-        if coverage_fraction < min_coverage_fraction:
-            continue
-
-        if qlen < slen:
-            removed.add(qseqid)
-        elif slen < qlen:
-            removed.add(sseqid)
-        else:
-            # Deterministic tie-break: keep lexicographically smallest ID.
-            removed.add(max(qseqid, sseqid))
+        removed.add(qseqid)
 
     return removed
 
@@ -167,7 +156,7 @@ def deduplicate_contigs(
     workdir.mkdir(parents=True, exist_ok=True)
 
     db_prefix = workdir / "self_db"
-    blast_out = workdir / "self_blast.tsv"
+    blast_out = workdir / "self_blast.csv"
 
     makeblastdb_cmd = [
         cfg.makeblastdb_exec,
@@ -181,19 +170,31 @@ def deduplicate_contigs(
 
     blastn_cmd = [
         cfg.blastn_exec,
+        "-task",
+        str(cfg.task),
+        "-word_size",
+        str(int(cfg.word_size)),
         "-query",
         str(input_fasta),
         "-db",
         str(db_prefix),
-        "-out",
-        str(blast_out),
-        "-outfmt",
-        "6 qseqid sseqid pident length qlen slen qstart qend sstart send evalue bitscore",
-        "-evalue",
-        str(cfg.evalue),
         "-num_threads",
         str(max(1, int(cfg.threads))),
+        "-evalue",
+        str(cfg.evalue),
+        "-perc_identity",
+        str(float(cfg.perc_identity)),
+        "-qcov_hsp_perc",
+        str(float(cfg.qcov_hsp_perc)),
+        "-max_target_seqs",
+        str(max(2, int(cfg.max_target_seqs))),
+        "-outfmt",
+        "10 qseqid qlen sseqid slen",
+        "-out",
+        str(blast_out),
     ]
+    if cfg.extra_args:
+        blastn_cmd.extend(str(arg) for arg in cfg.extra_args)
 
     try:
         run_tool(makeblastdb_cmd, out_log=out_log, err_log=err_log, check=True)
@@ -208,11 +209,9 @@ def deduplicate_contigs(
     records = list(iter_fasta_records(input_fasta))
     known_ids = {rec_id for rec_id, _seq in records}
 
-    blast_rows = _parse_self_blast_tsv(blast_out)
+    blast_rows = _parse_self_blast_csv(blast_out)
     removed = _select_contigs_to_remove(
         blast_rows,
-        pident_min=float(cfg.pident_min),
-        min_coverage_fraction=float(cfg.min_coverage_fraction),
         known_ids=known_ids,
     )
 

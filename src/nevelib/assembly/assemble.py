@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 import shutil
 import subprocess
@@ -10,6 +11,9 @@ import subprocess
 from nevelib._common.fasta import iter_fasta_records
 from nevelib._common.fastq import validate_fastq
 from nevelib._common.toolrun import check_tool, run_tool
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -87,10 +91,14 @@ def _resolve_primary_assembly(contigs: Path, scaffolds: Path) -> Path:
         shutil.copyfile(contigs, scaffolds)
         return scaffolds
 
-    raise RuntimeError(
-        "SPAdes did not produce a non-empty assembly output "
-        f"({contigs} / {scaffolds})."
+    scaffolds.parent.mkdir(parents=True, exist_ok=True)
+    scaffolds.write_text("", encoding="utf-8")
+    LOGGER.warning(
+        "SPAdes produced no non-empty outputs (%s / %s); creating empty scaffolds.fasta.",
+        contigs,
+        scaffolds,
     )
+    return scaffolds
 
 
 def assemble_reads(

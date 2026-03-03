@@ -56,16 +56,20 @@ _DEFAULTS: dict = {
         "threads": 8,
         "min_mean_coverage": 5.0,
         "minimap2_preset": "sr",
-        "mosdepth_window": 0,
+        "mosdepth_window": 100,
     },
     "deduplication": {
         "enabled": True,
         "blastn": "blastn",
         "makeblastdb": "makeblastdb",
-        "evalue": 1e-10,
-        "pident_min": 95.0,
-        "min_coverage_fraction": 0.95,
-        "threads": 4,
+        "evalue": 1e-20,
+        "task": "megablast",
+        "word_size": 28,
+        "perc_identity": 100.0,
+        "qcov_hsp_perc": 100.0,
+        "max_target_seqs": 100,
+        "threads": 8,
+        "extra_args": None,
     },
     "compression": {
         "compressor": "pigz",
@@ -238,7 +242,7 @@ def main() -> None:
             threads=int(cov_cfg_raw["threads"]),
             min_mean_coverage=float(cov_cfg_raw["min_mean_coverage"]),
             minimap2_preset=str(cov_cfg_raw["minimap2_preset"]),
-            mosdepth_window=int(cov_cfg_raw.get("mosdepth_window", 0)),
+            mosdepth_window=int(cov_cfg_raw.get("mosdepth_window", 100)),
         )
         cov_dir = output_dir / "coverage_filter"
         cov_out = cov_dir / "contigs.coverage.filtered.fasta"
@@ -271,9 +275,13 @@ def main() -> None:
             blastn_exec=dedup_cfg_raw["blastn"],
             makeblastdb_exec=dedup_cfg_raw["makeblastdb"],
             evalue=float(dedup_cfg_raw["evalue"]),
-            pident_min=float(dedup_cfg_raw["pident_min"]),
-            min_coverage_fraction=float(dedup_cfg_raw["min_coverage_fraction"]),
+            task=str(dedup_cfg_raw.get("task", "megablast")),
+            word_size=int(dedup_cfg_raw.get("word_size", 28)),
+            perc_identity=float(dedup_cfg_raw.get("perc_identity", 100.0)),
+            qcov_hsp_perc=float(dedup_cfg_raw.get("qcov_hsp_perc", 100.0)),
+            max_target_seqs=int(dedup_cfg_raw.get("max_target_seqs", 100)),
             threads=int(dedup_cfg_raw["threads"]),
+            extra_args=dedup_cfg_raw.get("extra_args"),
         )
 
         dedup_dir = output_dir / "deduplication"

@@ -35,16 +35,20 @@ coverage_filter:
   threads: 8
   min_mean_coverage: 5.0
   minimap2_preset: "sr"
-  mosdepth_window: 0
+  mosdepth_window: 100
 
 deduplication:
   enabled: true
   blastn: "blastn"
   makeblastdb: "makeblastdb"
-  evalue: 1e-10
-  pident_min: 95.0
-  min_coverage_fraction: 0.95
-  threads: 4
+  evalue: 1e-20
+  task: "megablast"
+  word_size: 28
+  perc_identity: 100.0
+  qcov_hsp_perc: 100.0
+  max_target_seqs: 100
+  threads: 8
+  extra_args: null
 
 compression:
   compressor: "pigz"

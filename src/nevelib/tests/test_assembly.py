@@ -80,12 +80,12 @@ def test_normalize_pairs_builds_correct_command(
 
     cmd = seen["cmd"]
     assert cmd[0] == "bbnorm.sh"
-    assert f"in={r1_in}" in cmd
+    assert f"in1={r1_in}" in cmd
     assert f"in2={r2_in}" in cmd
-    assert f"out={r1_out}" in cmd
+    assert f"out1={r1_out}" in cmd
     assert f"out2={r2_out}" in cmd
     assert "target=100" in cmd
-    assert "mindepth=5" in cmd
+    assert "mindepth=5" not in cmd
 
 
 def test_normalize_pairs_rejects_missing_input(tmp_path: Path) -> None:
@@ -133,6 +133,40 @@ def test_normalize_pairs_with_extra_args(
     cmd = seen["cmd"]
     assert "passes=2" in cmd
     assert "prefilter=t" in cmd
+
+
+def test_normalize_pairs_empty_input_bypass(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Empty-input normalization bypasses BBNorm invocation."""
+    r1_in = tmp_path / "R1.fastq.gz"
+    r2_in = tmp_path / "R2.fastq.gz"
+    r1_out = tmp_path / "R1.norm.fastq.gz"
+    r2_out = tmp_path / "R2.norm.fastq.gz"
+
+    _write_fastq(r1_in, [])
+    _write_fastq(r2_in, [("x/2", "TGCA", "IIII")])
+
+    called = {"run_tool": 0, "check_tool": 0}
+
+    def _fake_run_tool(_cmd, **_kwargs):
+        called["run_tool"] += 1
+        return subprocess.CompletedProcess(args=_cmd, returncode=0, stdout="", stderr="")
+
+    def _fake_check_tool(*_a, **_k):
+        called["check_tool"] += 1
+        return ToolInfo(name="bbnorm.sh", available=True, path=Path("/usr/bin/bbnorm.sh"))
+
+    monkeypatch.setattr("nevelib.assembly.normalize.run_tool", _fake_run_tool)
+    monkeypatch.setattr("nevelib.assembly.normalize.check_tool", _fake_check_tool)
+
+    normalize_pairs(r1_in, r2_in, r1_out, r2_out, NormalizeConfig())
+
+    assert called["run_tool"] == 0
+    assert called["check_tool"] == 0
+    assert r1_out.exists() and r1_out.stat().st_size > 0
+    assert r2_out.exists() and r2_out.stat().st_size > 0
 
 
 # --- assemble.py ---
@@ -306,6 +340,34 @@ def test_assemble_reads_counts_output_contigs(
     assert result.n_scaffolds == 1
 
 
+def test_assemble_reads_empty_output_creates_empty_scaffolds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Successful SPAdes run with no outputs creates empty scaffolds.fasta."""
+    r1 = tmp_path / "R1.fastq.gz"
+    r2 = tmp_path / "R2.fastq.gz"
+    outdir = tmp_path / "spades"
+    _write_fastq(r1, [("a/1", "ACGT", "IIII")])
+    _write_fastq(r2, [("a/2", "TGCA", "IIII")])
+
+    def _fake_run_tool(cmd, **_kwargs):
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "nevelib.assembly.assemble.check_tool",
+        lambda *_a, **_k: ToolInfo(name="spades.py", available=True, path=Path("/usr/bin/spades.py")),
+    )
+    monkeypatch.setattr("nevelib.assembly.assemble.run_tool", _fake_run_tool)
+
+    result = assemble_reads(r1, r2, None, outdir, AssemblyConfig())
+
+    assert result.n_contigs == 0
+    assert result.n_scaffolds == 0
+    assert result.scaffolds.exists()
+    assert result.scaffolds.stat().st_size == 0
+
+
 # --- coverage.py ---
 
 def test_coverage_filter_config_defaults() -> None:
@@ -317,7 +379,7 @@ def test_coverage_filter_config_defaults() -> None:
     assert cfg.threads == 8
     assert cfg.min_mean_coverage == 5.0
     assert cfg.minimap2_preset == "sr"
-    assert cfg.mosdepth_window == 0
+    assert cfg.mosdepth_window == 100
 
 
 def test_filter_by_coverage_builds_minimap2_command(
@@ -367,6 +429,10 @@ def test_filter_by_coverage_builds_minimap2_command(
         and str(r2) in cmd
         for cmd in calls
     )
+    mosdepth_cmd = next(cmd for cmd in calls if isinstance(cmd, list) and cmd and cmd[0] == "mosdepth")
+    assert "--fast-mode" in mosdepth_cmd
+    assert "--by" in mosdepth_cmd
+    assert "100" in mosdepth_cmd
 
 
 def test_filter_by_coverage_parses_mosdepth_output(
@@ -467,6 +533,55 @@ def test_filter_by_coverage_writes_passing_contigs(
     assert ">c3" not in text
 
 
+def test_filter_by_coverage_passthrough_no_mapped_reads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Missing/zero mosdepth summary triggers passthrough output."""
+    contigs = tmp_path / "contigs.fasta"
+    r1 = tmp_path / "R1.fastq.gz"
+    r2 = tmp_path / "R2.fastq.gz"
+    out = tmp_path / "filtered.fasta"
+    workdir = tmp_path / "work"
+
+    _write_fasta(contigs, [("c1", "ACGT"), ("c2", "GGGG")])
+    _write_fastq(r1, [("x/1", "ACGT", "IIII")])
+    _write_fastq(r2, [("x/2", "TGCA", "IIII")])
+
+    def _fake_run_tool(cmd, **_kwargs):
+        if isinstance(cmd, list) and cmd and cmd[0] == "mosdepth":
+            summary = workdir / "coverage.mosdepth.summary.txt"
+            summary.parent.mkdir(parents=True, exist_ok=True)
+            summary.write_text(
+                "c1\t4\t0\t0.0\n"
+                "c2\t4\t0\t0.0\n"
+                "total\t8\t0\t0.0\n",
+                encoding="utf-8",
+            )
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "nevelib.assembly.coverage.check_tool",
+        lambda name, **_k: ToolInfo(name=name, available=True, path=Path(f"/usr/bin/{name}")),
+    )
+    monkeypatch.setattr("nevelib.assembly.coverage.run_tool", _fake_run_tool)
+
+    result = filter_by_coverage(
+        contigs,
+        r1,
+        r2,
+        None,
+        out,
+        workdir,
+        CoverageFilterConfig(min_mean_coverage=5.0),
+    )
+
+    assert result.n_input == 2
+    assert result.n_passing == 2
+    assert result.n_removed == 0
+    assert out.read_text(encoding="utf-8") == contigs.read_text(encoding="utf-8")
+
+
 # --- dedup.py ---
 
 def test_dedup_config_defaults() -> None:
@@ -474,10 +589,13 @@ def test_dedup_config_defaults() -> None:
     cfg = DedupConfig()
     assert cfg.blastn_exec == "blastn"
     assert cfg.makeblastdb_exec == "makeblastdb"
-    assert cfg.evalue == 1e-10
-    assert cfg.pident_min == 95.0
-    assert cfg.min_coverage_fraction == 0.95
-    assert cfg.threads == 4
+    assert cfg.evalue == 1e-20
+    assert cfg.task == "megablast"
+    assert cfg.word_size == 28
+    assert cfg.perc_identity == 100.0
+    assert cfg.qcov_hsp_perc == 100.0
+    assert cfg.max_target_seqs == 100
+    assert cfg.threads == 8
 
 
 def test_deduplicate_builds_makeblastdb_command(
@@ -541,6 +659,11 @@ def test_deduplicate_builds_blastn_command(
     assert isinstance(blastn_cmd, list)
     assert blastn_cmd[0] == "blastn"
     assert "-query" in blastn_cmd and str(input_fasta) in blastn_cmd
+    assert "-task" in blastn_cmd and "megablast" in blastn_cmd
+    assert "-word_size" in blastn_cmd and "28" in blastn_cmd
+    assert "-perc_identity" in blastn_cmd and "100.0" in blastn_cmd
+    assert "-qcov_hsp_perc" in blastn_cmd and "100.0" in blastn_cmd
+    assert "-max_target_seqs" in blastn_cmd and "100" in blastn_cmd
     assert "-outfmt" in blastn_cmd
     assert "-num_threads" in blastn_cmd
 
@@ -566,7 +689,7 @@ def test_deduplicate_removes_contained_contigs(
             out_path = Path(cmd[cmd.index("-out") + 1])
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(
-                "c2\tc1\t99.0\t100\t100\t120\t1\t100\t1\t100\t1e-40\t500\n",
+                "c2,100,c1,120\n",
                 encoding="utf-8",
             )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
@@ -600,8 +723,8 @@ def test_deduplicate_keeps_longer_of_mutual_containment(
             out_path = Path(cmd[cmd.index("-out") + 1])
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(
-                "short\tlong\t99.9\t100\t100\t120\t1\t100\t1\t100\t1e-50\t600\n"
-                "long\tshort\t99.9\t100\t120\t100\t1\t100\t1\t100\t1e-50\t600\n",
+                "short,100,long,120\n"
+                "long,120,short,100\n",
                 encoding="utf-8",
             )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
@@ -635,8 +758,8 @@ def test_deduplicate_no_self_hits(
             out_path = Path(cmd[cmd.index("-out") + 1])
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(
-                "c1\tc1\t100.0\t4\t4\t4\t1\t4\t1\t4\t1e-5\t30\n"
-                "c2\tc2\t100.0\t4\t4\t4\t1\t4\t1\t4\t1e-5\t30\n",
+                "c1,4,c1,4\n"
+                "c2,4,c2,4\n",
                 encoding="utf-8",
             )
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")

@@ -232,7 +232,7 @@ def write_fasta(
     records: Iterator[tuple[str, str]],
     path: Path,
     *,
-    wrap_width: int = 80,
+    wrap_width: int = 60,
 ) -> int:
     """Write FASTA records to a file.
 

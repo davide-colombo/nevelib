@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import gzip
 from pathlib import Path
 import subprocess
 
@@ -17,7 +18,7 @@ class NormalizeConfig:
     Attributes:
         bbnorm_exec: Name or path of the bbnorm.sh binary (BBTools).
         target_coverage: Target coverage depth for normalization.
-        min_depth: Minimum depth to retain a k-mer.
+        min_depth: Optional mindepth setting (prefer passing as extra_args).
         threads: Number of threads.
         memory: Java heap memory string (for example: '8g').
         extra_args: Additional BBNorm CLI arguments.
@@ -31,11 +32,19 @@ class NormalizeConfig:
     extra_args: list[str] | None = None
 
 
-def _validate_input_fastq(path: Path, label: str) -> None:
-    """Validate a FASTQ input path and raise if invalid."""
-    result = validate_fastq(path, check_gzip=True, check_nonempty=True, min_reads=1)
+def _validate_input_fastq(path: Path, label: str) -> int:
+    """Validate FASTQ structure and return read count."""
+    result = validate_fastq(path, check_gzip=True, check_nonempty=False, min_reads=0)
     if not result.valid:
         raise ValueError(f"Invalid {label} FASTQ: " + "; ".join(result.errors))
+    return int(result.read_count or 0)
+
+
+def _write_empty_gzip(path: Path) -> None:
+    """Write a valid empty gzip stream."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(path, "wb"):
+        pass
 
 
 def _extract_stderr(exc: subprocess.CalledProcessError) -> str:
@@ -74,24 +83,28 @@ def normalize_pairs(
         ValueError: If input FASTQ validation fails.
         RuntimeError: If BBNorm is unavailable or fails.
     """
-    _validate_input_fastq(r1_in, "r1")
-    _validate_input_fastq(r2_in, "r2")
+    r1_count = _validate_input_fastq(r1_in, "r1")
+    r2_count = _validate_input_fastq(r2_in, "r2")
+
+    r1_out.parent.mkdir(parents=True, exist_ok=True)
+    r2_out.parent.mkdir(parents=True, exist_ok=True)
+
+    if r1_count == 0 or r2_count == 0:
+        _write_empty_gzip(r1_out)
+        _write_empty_gzip(r2_out)
+        return r1_out, r2_out
 
     tool = check_tool(cfg.bbnorm_exec)
     if not tool.available:
         raise RuntimeError(f"BBNorm executable not available: {cfg.bbnorm_exec}")
 
-    r1_out.parent.mkdir(parents=True, exist_ok=True)
-    r2_out.parent.mkdir(parents=True, exist_ok=True)
-
     cmd: list[str] = [
         cfg.bbnorm_exec,
-        f"in={r1_in}",
+        f"in1={r1_in}",
         f"in2={r2_in}",
-        f"out={r1_out}",
+        f"out1={r1_out}",
         f"out2={r2_out}",
         f"target={int(cfg.target_coverage)}",
-        f"mindepth={int(cfg.min_depth)}",
         f"threads={max(1, int(cfg.threads))}",
         f"-Xmx{cfg.memory}",
     ]

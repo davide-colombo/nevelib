@@ -86,6 +86,17 @@ def test_write_fasta_wraps_at_configured_width(tmp_path: Path) -> None:
     assert all(len(line) <= 60 for line in seq_lines)
 
 
+def test_write_fasta_default_wrap_is_60(tmp_path: Path) -> None:
+    """Default FASTA wrapping follows 60-column width."""
+    path = tmp_path / "wrapped_default.fasta"
+    write_fasta(iter([("x", "A" * 125)]), path)
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    seq_lines = [line for line in lines if not line.startswith(">")]
+    assert seq_lines
+    assert all(len(line) <= 60 for line in seq_lines)
+
+
 def test_check_tool_finds_python() -> None:
     """check_tool reports python3 as available in this environment."""
     info = check_tool("python3")
