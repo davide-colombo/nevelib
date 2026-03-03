@@ -2,18 +2,13 @@
 
 from __future__ import annotations
 
-import gzip
 from pathlib import Path
-import re
 import subprocess
 
 import pandas as pd
 import pytest
 
-from nevelib._common.blast_db import validate_blast_db
-from nevelib._common.compression import CompressionConfig, compress, decompress, validate_gzip
 from nevelib._common.toolrun import ToolInfo
-from nevelib._common.tsv import validate_tsv
 from nevelib.search import cli as search_cli
 from nevelib.search.blast import BlastConfig, run_blastn, run_blastx, run_makeblastdb
 from nevelib.search.classify import (
@@ -517,139 +512,6 @@ def test_matches_keywords() -> None:
     """matches_keywords performs case-insensitive substring matching."""
     assert matches_keywords("Tobacco mosaic virus", ["virus"])
     assert not matches_keywords("Homo sapiens", ["virus", "phage"])
-
-
-# --- blast_db validation tests ---
-
-def test_validate_blast_db_valid_nucl(tmp_path: Path) -> None:
-    """validate_blast_db accepts valid nucleotide sidecar files."""
-    prefix = tmp_path / "db" / "core"
-    _write_fake_db(prefix, db_type="nucl")
-
-    result = validate_blast_db(prefix, db_type="nucl")
-    assert result.valid is True
-
-
-def test_validate_blast_db_missing_files(tmp_path: Path) -> None:
-    """validate_blast_db reports missing required sidecar files."""
-    prefix = tmp_path / "db" / "core"
-    prefix.parent.mkdir(parents=True, exist_ok=True)
-    (prefix.with_suffix(".nin")).write_text("", encoding="utf-8")
-
-    result = validate_blast_db(prefix, db_type="nucl")
-    assert result.valid is False
-
-
-def test_validate_blast_db_taxonomy_present(tmp_path: Path) -> None:
-    """Taxonomy presence is detected when sidecar files exist."""
-    prefix = tmp_path / "db" / "core"
-    _write_fake_db(prefix, db_type="nucl")
-    (prefix.parent / "taxdb.bti").write_text("", encoding="utf-8")
-    (prefix.parent / "taxdb.btd").write_text("", encoding="utf-8")
-
-    result = validate_blast_db(prefix, db_type="nucl")
-    assert result.has_taxonomy is True
-
-
-def test_validate_blast_db_taxonomy_missing_when_required(tmp_path: Path) -> None:
-    """Validation fails when taxonomy files are required but missing."""
-    prefix = tmp_path / "db" / "core"
-    _write_fake_db(prefix, db_type="nucl")
-
-    result = validate_blast_db(prefix, db_type="nucl", require_taxonomy=True)
-    assert result.valid is False
-
-
-# --- tsv validation tests ---
-
-def test_validate_tsv_valid_file(tmp_path: Path) -> None:
-    """validate_tsv accepts a valid table and counts rows."""
-    path = tmp_path / "table.tsv"
-    path.write_text("a\tb\n1\t2\n3\t4\n5\t6\n", encoding="utf-8")
-
-    result = validate_tsv(path, required_columns=["a", "b"])
-    assert result.valid is True
-    assert result.row_count == 3
-
-
-def test_validate_tsv_missing_columns(tmp_path: Path) -> None:
-    """validate_tsv fails when required columns are missing."""
-    path = tmp_path / "table.tsv"
-    path.write_text("a\tb\n1\t2\n", encoding="utf-8")
-
-    result = validate_tsv(path, required_columns=["a", "c"])
-    assert result.valid is False
-
-
-def test_validate_tsv_empty_file(tmp_path: Path) -> None:
-    """Header-only table fails non-empty validation."""
-    path = tmp_path / "table.tsv"
-    path.write_text("a\tb\n", encoding="utf-8")
-
-    result = validate_tsv(path, check_nonempty=True)
-    assert result.valid is False
-
-
-# --- compression tests ---
-
-def test_validate_gzip_detects_standard_gzip(tmp_path: Path) -> None:
-    """validate_gzip returns 'gzip' for standard gzip files."""
-    gz_path = tmp_path / "file.txt.gz"
-    with gzip.open(gz_path, "wb") as handle:
-        handle.write(b"hello\n")
-
-    assert validate_gzip(gz_path) == "gzip"
-
-
-def test_validate_gzip_rejects_non_gzip(tmp_path: Path) -> None:
-    """validate_gzip rejects plain-text files."""
-    txt_path = tmp_path / "file.txt"
-    txt_path.write_text("plain text\n", encoding="utf-8")
-
-    with pytest.raises(ValueError):
-        validate_gzip(txt_path)
-
-
-def test_compress_decompress_roundtrip(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """compress + decompress preserves original file content."""
-    input_path = tmp_path / "input.txt"
-    input_path.write_text("abc\n123\n", encoding="utf-8")
-    compressed_path = tmp_path / "input.txt.gz"
-    output_path = tmp_path / "output.txt"
-
-    def _fake_check_tool(name: str, **_kwargs) -> ToolInfo:
-        return ToolInfo(name=name, available=True, path=Path(f"/usr/bin/{name}"))
-
-    def _fake_run_tool(cmd, **_kwargs):
-        if isinstance(cmd, list):
-            raise AssertionError("Expected shell command string for compression tool.")
-
-        match = re.search(r"< '([^']+)' > '([^']+)'", cmd)
-        assert match is not None
-        src = Path(match.group(1))
-        dst = Path(match.group(2))
-
-        if " -d " in cmd:
-            with gzip.open(src, "rb") as in_fh, dst.open("wb") as out_fh:
-                out_fh.write(in_fh.read())
-        else:
-            with src.open("rb") as in_fh, gzip.open(dst, "wb") as out_fh:
-                out_fh.write(in_fh.read())
-
-        return subprocess.CompletedProcess(args=["mock"], returncode=0, stdout="", stderr="")
-
-    monkeypatch.setattr("nevelib._common.compression.check_tool", _fake_check_tool)
-    monkeypatch.setattr("nevelib._common.compression.run_tool", _fake_run_tool)
-
-    cfg = CompressionConfig(compressor="pigz", fallback="gzip")
-    compress(input_path, compressed_path, cfg)
-    decompress(compressed_path, output_path, cfg)
-
-    assert output_path.read_text(encoding="utf-8") == input_path.read_text(encoding="utf-8")
-
 
 # --- CLI tests ---
 

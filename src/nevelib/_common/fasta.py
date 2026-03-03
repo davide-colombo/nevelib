@@ -1,4 +1,4 @@
-"""FASTA file validation, quality control, and shared I/O utilities.
+"""FASTA file validation and shared I/O utilities.
 
 Called by any module that reads or writes FASTA files.
 """
@@ -33,33 +33,6 @@ class FastaValidationResult:
     record_count: int | None = None
     has_index: bool = False
     alphabet: str | None = None
-
-
-@dataclass
-class FastaQCReport:
-    """Quality control summary for a FASTA file.
-
-    Attributes:
-        path: Path to the FASTA file.
-        record_count: Number of sequences.
-        total_bases: Total number of bases across all sequences.
-        n50: N50 length in bases.
-        mean_length: Mean sequence length.
-        min_length: Length of the shortest sequence.
-        max_length: Length of the longest sequence.
-        gc_fraction: GC content as a fraction.
-        length_thresholds: Count of sequences exceeding standard thresholds.
-    """
-
-    path: Path
-    record_count: int = 0
-    total_bases: int = 0
-    n50: int = 0
-    mean_length: float = 0.0
-    min_length: int = 0
-    max_length: int = 0
-    gc_fraction: float = 0.0
-    length_thresholds: dict[int, int] = field(default_factory=dict)
 
 
 def _index_path(path: Path) -> Path:
@@ -211,23 +184,6 @@ def validate_fasta(
         result.valid = False
 
     return result
-
-
-def qc_fasta(
-    path: Path,
-    *,
-    length_thresholds: tuple[int, ...] = (250, 500, 1000, 2000, 5000, 10000),
-) -> FastaQCReport:
-    """Compute quality control statistics for a FASTA file.
-
-    Args:
-        path: Path to the FASTA file.
-        length_thresholds: Sequence length thresholds for counting.
-
-    Returns:
-        FastaQCReport with computed statistics.
-    """
-    raise NotImplementedError
 
 
 def iter_fasta_records(path: Path) -> Iterator[tuple[str, str]]:
