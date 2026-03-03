@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import logging
 import math
 from pathlib import Path
@@ -55,6 +55,7 @@ class BlastHit:
     bitscore: float
     qlen: int | None = None
     slen: int | None = None
+    strand: str = "+"
     extra: dict[str, str] = field(default_factory=dict)
 
 
@@ -216,6 +217,46 @@ def parse_blast_to_dataframe(
     return pd.DataFrame(rows, columns=active_fields)
 
 
+def normalize_blast_strand(
+    hits: list[BlastHit] | pd.DataFrame,
+) -> list[BlastHit] | pd.DataFrame:
+    """Normalize subject coordinates and derive strand from sstart/send.
+
+    For hits where `sstart > send`, coordinates are swapped and strand is `-`.
+    Otherwise strand is `+`.
+
+    Returns the same container type as the input.
+    """
+    if isinstance(hits, list):
+        normalized: list[BlastHit] = []
+        for hit in hits:
+            sstart_i = int(hit.sstart)
+            send_i = int(hit.send)
+            if sstart_i <= send_i:
+                normalized.append(replace(hit, strand="+"))
+            else:
+                normalized.append(replace(hit, sstart=send_i, send=sstart_i, strand="-"))
+        return normalized
+
+    if "sstart" not in hits.columns or "send" not in hits.columns:
+        raise ValueError("Input DataFrame must contain 'sstart' and 'send' columns.")
+
+    work = hits.copy()
+    sstart_num = pd.to_numeric(work["sstart"], errors="coerce")
+    send_num = pd.to_numeric(work["send"], errors="coerce")
+    comparable = sstart_num.notna() & send_num.notna()
+    minus_mask = comparable & (sstart_num > send_num)
+
+    start_norm = np.minimum(sstart_num, send_num)
+    end_norm = np.maximum(sstart_num, send_num)
+
+    work["strand"] = "+"
+    work.loc[minus_mask, "strand"] = "-"
+    work.loc[comparable, "sstart"] = start_norm[comparable].astype("int64")
+    work.loc[comparable, "send"] = end_norm[comparable].astype("int64")
+    return work
+
+
 def _coverage_from_hit(hit: BlastHit, kind: str) -> float | None:
     """Extract optional coverage fields from a hit."""
     keys = ["qcov", "qcovhsp", "qcovs"] if kind == "q" else ["scov", "scovhsp", "scovs"]
@@ -357,8 +398,8 @@ def _contained_unique_intervals(starts: np.ndarray, ends: np.ndarray) -> set[tup
         if e[idx] < max_end:
             prune[idx] = True
         elif e[idx] == max_end:
-            # Treat identical intervals as duplicates; keep only the first.
-            if s[idx] >= max_start:
+            # Preserve identical intervals; prune only strict containment.
+            if s[idx] > max_start:
                 prune[idx] = True
         else:
             max_end = e[idx]
@@ -419,7 +460,6 @@ def prune_contained_intervals(
         prune_set = _contained_unique_intervals(starts, ends)
 
         kept_indices: list[int] = []
-        seen_intervals: set[tuple[int, int]] = set()
         removed_count = 0
 
         for idx, row in with_coords.iterrows():
@@ -427,11 +467,6 @@ def prune_contained_intervals(
             if interval in prune_set:
                 removed_count += 1
                 continue
-            if interval in seen_intervals:
-                # Keep only one instance of identical intervals.
-                removed_count += 1
-                continue
-            seen_intervals.add(interval)
             kept_indices.append(idx)
 
         keep_mask.loc[kept_indices] = True

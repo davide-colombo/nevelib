@@ -17,8 +17,10 @@ from nevelib.search.classify import (
     matches_keywords,
 )
 from nevelib.search.hits import (
+    BlastHit,
     filter_hits,
     filter_hits_by_bitscore_fraction,
+    normalize_blast_strand,
     parse_blast_tabular,
     parse_blast_to_dataframe,
     prune_contained_intervals,
@@ -403,7 +405,7 @@ def test_prune_contained_intervals_keeps_partial_overlaps() -> None:
 
 
 def test_prune_contained_intervals_handles_identical() -> None:
-    """Identical intervals collapse to one retained row."""
+    """Identical intervals are preserved (NextEVE-compatible behavior)."""
     df = pd.DataFrame(
         [
             {"qseqid": "q1", "qstart": 10, "qend": 50, "sseqid": "a"},
@@ -411,8 +413,82 @@ def test_prune_contained_intervals_handles_identical() -> None:
         ]
     )
     pruned, removed = prune_contained_intervals(df)
+    assert len(pruned) == 2
+    assert removed["q1"] == 0
+
+
+def test_prune_contained_intervals_equal_end_boundary() -> None:
+    """Equal-end intervals prune only when the start is strictly larger."""
+    df = pd.DataFrame(
+        [
+            {"qseqid": "q1", "qstart": 10, "qend": 50, "sseqid": "outer"},
+            {"qseqid": "q1", "qstart": 20, "qend": 50, "sseqid": "inner"},
+        ]
+    )
+    pruned, removed = prune_contained_intervals(df)
     assert len(pruned) == 1
+    assert pruned.iloc[0]["sseqid"] == "outer"
     assert removed["q1"] == 1
+
+
+def test_normalize_blast_strand_positive() -> None:
+    """sstart < send remains unchanged with '+' strand."""
+    hits = [
+        BlastHit(
+            qseqid="q1",
+            sseqid="s1",
+            pident=99.0,
+            length=100,
+            mismatch=0,
+            gapopen=0,
+            qstart=1,
+            qend=100,
+            sstart=10,
+            send=80,
+            evalue=1e-20,
+            bitscore=200.0,
+        )
+    ]
+    out = normalize_blast_strand(hits)
+    assert isinstance(out, list)
+    assert out[0].strand == "+"
+    assert out[0].sstart == 10
+    assert out[0].send == 80
+
+
+def test_normalize_blast_strand_negative() -> None:
+    """sstart > send is swapped with '-' strand."""
+    hits = [
+        BlastHit(
+            qseqid="q1",
+            sseqid="s1",
+            pident=99.0,
+            length=100,
+            mismatch=0,
+            gapopen=0,
+            qstart=1,
+            qend=100,
+            sstart=80,
+            send=10,
+            evalue=1e-20,
+            bitscore=200.0,
+        )
+    ]
+    out = normalize_blast_strand(hits)
+    assert isinstance(out, list)
+    assert out[0].strand == "-"
+    assert out[0].sstart == 10
+    assert out[0].send == 80
+
+
+def test_normalize_blast_strand_equal() -> None:
+    """sstart == send is treated as '+' strand."""
+    df = pd.DataFrame([{"sstart": 10, "send": 10, "qseqid": "q1", "sseqid": "s1"}])
+    out = normalize_blast_strand(df)
+    assert isinstance(out, pd.DataFrame)
+    assert out.loc[0, "strand"] == "+"
+    assert int(out.loc[0, "sstart"]) == 10
+    assert int(out.loc[0, "send"]) == 10
 
 
 def test_filter_hits_by_bitscore_fraction() -> None:
@@ -504,8 +580,23 @@ def test_is_missing_taxonomy() -> None:
     assert is_missing_taxonomy("")
     assert is_missing_taxonomy("N/A")
     assert is_missing_taxonomy("na")
+    assert is_missing_taxonomy("0")
     assert is_missing_taxonomy("unclassified")
     assert not is_missing_taxonomy("Viruses")
+
+
+def test_classify_missing_taxonomy_token_zero() -> None:
+    """Token '0' is treated as missing taxonomy."""
+    df = pd.DataFrame([{"qseqid": "q1", "sskingdoms": "0", "stitle": "Tobacco mosaic virus"}])
+    out = classify_hits_by_taxonomy(
+        df,
+        taxonomy_col="sskingdoms",
+        rule="any",
+        keywords=["virus"],
+        keyword_fallback=True,
+    )
+    assert out[0].classification == "positive"
+    assert out[0].keyword_match is True
 
 
 def test_matches_keywords() -> None:

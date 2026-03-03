@@ -58,9 +58,8 @@ def parse_mmseqs_clusters(
 ) -> list[ClusterAssignment]:
     """Parse MMseqs cluster TSV and build deterministic assignments.
 
-    Cluster IDs are assigned by sorting clusters by:
-    1) cluster size descending
-    2) representative ID ascending
+    Cluster IDs are assigned by representative ID (ascending lexicographic),
+    matching NextEVE Stage_03/Stage_05 behavior.
 
     IDs from `all_sequence_ids` missing in the cluster TSV are added as
     singleton clusters with unique IDs.
@@ -93,7 +92,7 @@ def parse_mmseqs_clusters(
             continue
         clusters.append((representative_id, filtered_members))
 
-    clusters.sort(key=lambda item: (-len(item[1]), item[0]))
+    clusters.sort(key=lambda item: item[0])
 
     next_cluster_id = 1
     for representative_id, members in clusters:

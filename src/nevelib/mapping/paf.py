@@ -201,17 +201,16 @@ def filter_paf_records(
 def best_hit_per_query(
     records: list[PafRecord],
     *,
-    metric: str = "nmatch",
+    metric: str = "mapq",
     ascending: bool = False,
 ) -> dict[str, PafRecord]:
     """Select the best PAF record per query with deterministic tie-breaking.
 
     Selection order:
     1) requested metric
-    2) mapq descending
-    3) aln_len descending
-    4) nmatch descending
-    5) target coordinates/name deterministic ordering
+    2) aln_len descending for `metric='mapq'`, otherwise mapq descending
+    3) nmatch descending
+    4) target coordinates/name deterministic ordering
 
     Args:
         records: Candidate records.
@@ -235,11 +234,19 @@ def best_hit_per_query(
             value = getattr(record, metric)
             primary = float(value)
             primary_key = primary if ascending else -primary
+            if metric == "mapq":
+                secondary_1 = -int(record.aln_len)
+                secondary_2 = -int(record.nmatch)
+                secondary_3 = 0
+            else:
+                secondary_1 = -int(record.mapq)
+                secondary_2 = -int(record.aln_len)
+                secondary_3 = -int(record.nmatch)
             return (
                 primary_key,
-                -int(record.mapq),
-                -int(record.aln_len),
-                -int(record.nmatch),
+                secondary_1,
+                secondary_2,
+                secondary_3,
                 str(record.tname),
                 int(record.tstart),
                 int(record.tend),

@@ -137,7 +137,7 @@ def test_run_mmseqs_linclust_success_cleans_tmp(
 
 
 def test_parse_mmseqs_clusters_deterministic_ids(tmp_path: Path) -> None:
-    """Cluster IDs are deterministic: size-descending then representative-ascending."""
+    """Cluster IDs are deterministic: representative-ascending (NextEVE-compatible)."""
     cluster_tsv = tmp_path / "clusters.tsv"
     cluster_tsv.write_text(
         "rep_b\trep_b\n"
@@ -157,11 +157,11 @@ def test_parse_mmseqs_clusters_deterministic_ids(tmp_path: Path) -> None:
     assert assignments_a == assignments_b
 
     by_seq = {entry.sequence_id: entry for entry in assignments_a}
-    assert by_seq["rep_b"].cluster_id == 1
-    assert by_seq["b1"].cluster_id == 1
-    assert by_seq["b2"].cluster_id == 1
-    assert by_seq["rep_a"].cluster_id == 2
-    assert by_seq["a1"].cluster_id == 2
+    assert by_seq["rep_a"].cluster_id == 1
+    assert by_seq["a1"].cluster_id == 1
+    assert by_seq["rep_b"].cluster_id == 2
+    assert by_seq["b1"].cluster_id == 2
+    assert by_seq["b2"].cluster_id == 2
     assert by_seq["rep_c"].cluster_id == 3
 
 

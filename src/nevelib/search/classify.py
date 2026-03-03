@@ -7,6 +7,20 @@ from dataclasses import dataclass
 import pandas as pd
 
 
+DEFAULT_MISSING_TAXONOMY_VALUES: set[str] = {
+    "",
+    "n/a",
+    "na",
+    "none",
+    "null",
+    ".",
+    "-",
+    "nan",
+    "0",
+    "unclassified",
+}
+
+
 @dataclass
 class ClassificationResult:
     """Classification outcome for one query.
@@ -26,10 +40,20 @@ class ClassificationResult:
     keyword_match: bool = False
 
 
-def is_missing_taxonomy(value: object) -> bool:
+def is_missing_taxonomy(
+    value: object,
+    *,
+    missing_values: set[str] | list[str] | tuple[str, ...] | None = None,
+) -> bool:
     """Return True when taxonomy value is empty or placeholder-like."""
     if value is None:
         return True
+
+    if missing_values is None:
+        missing_tokens = DEFAULT_MISSING_TAXONOMY_VALUES
+    else:
+        missing_tokens = {str(token).strip().lower() for token in missing_values}
+        missing_tokens.add("")
 
     text = str(value).strip()
     if not text:
@@ -43,7 +67,7 @@ def is_missing_taxonomy(value: object) -> bool:
         if not token:
             continue
         normalized = token.lower()
-        if normalized in {"n/a", "na", "none", "null", ".", "-", "nan", "unclassified"}:
+        if normalized in missing_tokens:
             continue
         return False
     return True
@@ -62,6 +86,7 @@ def classify_hits_by_taxonomy(
     rule: str = "majority",
     keywords: list[str] | None = None,
     keyword_fallback: bool = False,
+    missing_values: set[str] | list[str] | tuple[str, ...] | None = None,
 ) -> list[ClassificationResult]:
     """Classify grouped hits using taxonomy and optional keyword fallback.
 
@@ -71,6 +96,7 @@ def classify_hits_by_taxonomy(
         rule: Aggregation rule: 'majority', 'any', or 'all'.
         keywords: Positive-class keywords matched against taxonomy/title values.
         keyword_fallback: Use title keyword matching when taxonomy is missing.
+        missing_values: Optional set/list of placeholder tokens considered missing.
 
     Returns:
         One ClassificationResult per query.
@@ -88,11 +114,20 @@ def classify_hits_by_taxonomy(
         raise ValueError("rule must be one of: 'majority', 'any', 'all'.")
 
     keywords_list = keywords or []
+    missing_tokens = (
+        DEFAULT_MISSING_TAXONOMY_VALUES
+        if missing_values is None
+        else {str(token).strip().lower() for token in missing_values} | {""}
+    )
     results: list[ClassificationResult] = []
 
     grouped = hits_df.groupby("qseqid", sort=False)
     for query_id, group in grouped:
-        informative = group[~group[taxonomy_col].apply(is_missing_taxonomy)]
+        informative = group[
+            ~group[taxonomy_col].apply(
+                lambda value: is_missing_taxonomy(value, missing_values=missing_tokens)
+            )
+        ]
 
         top_taxon: str | None = None
         if not informative.empty:

@@ -220,121 +220,89 @@ def test_parse_fasta_alignment_rejects_unequal_lengths(tmp_path: Path) -> None:
         parse_fasta_alignment(path)
 
 
-def test_compute_metrics_basic() -> None:
-    """Basic metrics are computed for a simple 3-sequence alignment."""
-    aligned = {
-        "a": "ACGT",
-        "b": "ACGT",
-        "c": "A-GT",
-    }
-    metrics = compute_alignment_metrics(aligned, MetricsConfig(occupancy_threshold=0.5))
-
-    assert metrics.n_sequences == 3
-    assert metrics.alignment_length == 4
-    assert metrics.occupied_columns == 4
-    assert metrics.mean_pairwise_identity == pytest.approx(1.0)
+def test_compute_metrics_empty_alignment_matches_stage06_behavior() -> None:
+    """Empty aligned input returns zero-span metrics with n_total from core lengths."""
+    metrics = compute_alignment_metrics(
+        aligned={},
+        cfg=MetricsConfig(occupancy_threshold=0.6, min_seq_length=80),
+        core_lengths={"node1": 120},
+    )
+    assert metrics.n_total == 1
+    assert metrics.n_aligned == 0
+    assert metrics.shared_span_bp == 0
+    assert metrics.shared_span_frac == 0.0
+    assert metrics.median_identity is None
+    assert metrics.p10_identity is None
 
 
 def test_compute_metrics_all_gap_column() -> None:
-    """All-gap columns are skipped without division-by-zero."""
+    """All-gap shared-span edge case matches NextEVE zero-division handling."""
     aligned = {
-        "a": "A-C",
-        "b": "A-G",
+        "a": "---",
+        "b": "---",
     }
-    metrics = compute_alignment_metrics(aligned, MetricsConfig(occupancy_threshold=0.5))
-
-    assert metrics.alignment_length == 3
-    assert metrics.occupied_columns == 2
-    assert metrics.mean_pairwise_identity == pytest.approx(0.5)
+    metrics = compute_alignment_metrics(
+        aligned=aligned,
+        cfg=MetricsConfig(occupancy_threshold=0.6, min_seq_length=80),
+        core_lengths={"a": 0, "b": 0},
+    )
+    assert metrics.shared_span_bp == 0
+    assert metrics.shared_span_frac == 0.0
+    assert metrics.median_identity == pytest.approx(0.0)
+    assert metrics.p10_identity == pytest.approx(0.0)
 
 
 def test_compute_metrics_single_sequence() -> None:
     """Single-sequence alignment does not divide by zero."""
     aligned = {"only": "ACGT"}
-    metrics = compute_alignment_metrics(aligned, MetricsConfig(occupancy_threshold=0.5))
-
-    assert metrics.n_sequences == 1
-    assert metrics.alignment_length == 4
-    assert metrics.occupied_columns == 4
-    assert metrics.mean_pairwise_identity is None
-
-
-def test_compute_metrics_with_original_lengths() -> None:
-    """Coverage stats are computed when original lengths are provided."""
-    aligned = {
-        "a": "ACGT--",
-        "b": "AC----",
-    }
-    cfg = MetricsConfig(min_coverage=0.75)
     metrics = compute_alignment_metrics(
-        aligned,
-        cfg,
-        original_lengths={"a": 4, "b": 4},
+        aligned=aligned,
+        cfg=MetricsConfig(occupancy_threshold=0.5, min_seq_length=4),
+        core_lengths={"only": 4},
     )
-
-    assert metrics.mean_coverage == pytest.approx(0.75)
-    assert metrics.n_coverage_pass == 1
-    assert metrics.n_coverage_fail == 1
-
-
-def test_compute_metrics_without_original_lengths() -> None:
-    """Coverage is None when original lengths are omitted."""
-    aligned = {
-        "a": "ACGT",
-        "b": "ACGT",
-    }
-    metrics = compute_alignment_metrics(aligned, MetricsConfig(min_identity=0.9))
-
-    assert metrics.mean_coverage is None
-    assert metrics.mean_pairwise_identity == pytest.approx(1.0)
-    assert metrics.passing is True
+    assert metrics.n_total == 1
+    assert metrics.n_aligned == 1
+    assert metrics.shared_span_bp == 4
+    assert metrics.shared_span_frac == pytest.approx(1.0)
+    assert metrics.median_identity == pytest.approx(1.0)
+    assert metrics.p10_identity == pytest.approx(1.0)
 
 
-def test_compute_metrics_passing_true() -> None:
-    """Alignment passes when identity and coverage both meet thresholds."""
-    aligned = {
-        "a": "ACGT",
-        "b": "ACGT",
-    }
-    cfg = MetricsConfig(min_identity=0.9, min_coverage=0.9)
-    metrics = compute_alignment_metrics(
-        aligned,
-        cfg,
-        original_lengths={"a": 4, "b": 4},
-    )
-
-    assert metrics.passing is True
-
-
-def test_compute_metrics_failing_identity() -> None:
-    """Low pairwise identity causes failing=False."""
+def test_compute_metrics_consensus_identity_stats() -> None:
+    """Median and p10 identities are computed from per-sequence consensus identity."""
     aligned = {
         "a": "AAAA",
-        "b": "CCCC",
+        "b": "AAAT",
+        "c": "AATT",
+        "d": "TTTT",
     }
-    cfg = MetricsConfig(min_identity=0.5)
-    metrics = compute_alignment_metrics(aligned, cfg)
-
-    assert metrics.mean_pairwise_identity == pytest.approx(0.0)
-    assert metrics.passing is False
-
-
-def test_compute_metrics_failing_coverage() -> None:
-    """Low mean coverage causes failing=False."""
-    aligned = {
-        "a": "AAAA--",
-        "b": "AAAA--",
-    }
-    cfg = MetricsConfig(min_identity=0.9, min_coverage=0.5)
     metrics = compute_alignment_metrics(
-        aligned,
-        cfg,
-        original_lengths={"a": 10, "b": 10},
+        aligned=aligned,
+        cfg=MetricsConfig(occupancy_threshold=0.5, min_seq_length=4),
+        core_lengths={"a": 4, "b": 4, "c": 4, "d": 4},
     )
+    assert metrics.shared_span_bp == 4
+    assert metrics.shared_span_frac == pytest.approx(1.0)
+    assert metrics.median_identity == pytest.approx(0.75)
+    assert metrics.p10_identity == pytest.approx(0.25)
 
-    assert metrics.mean_pairwise_identity == pytest.approx(1.0)
-    assert metrics.mean_coverage == pytest.approx(0.4)
-    assert metrics.passing is False
+
+def test_compute_metrics_length_summaries() -> None:
+    """Length summary outputs mirror Stage_06 median/fraction logic."""
+    aligned = {
+        "a": "ACGT",
+        "b": "ACGT",
+        "c": "ACGT",
+    }
+    metrics = compute_alignment_metrics(
+        aligned=aligned,
+        cfg=MetricsConfig(occupancy_threshold=0.6, min_seq_length=80),
+        core_lengths={"a": 120, "b": 60, "c": 80, "d": 200},
+    )
+    assert metrics.n_total == 4
+    assert metrics.n_aligned == 3
+    assert metrics.median_sequence_length == pytest.approx(80.0)
+    assert metrics.frac_length_ge_min == pytest.approx(2 / 3)
 
 
 def test_metrics_config_defaults() -> None:
@@ -345,8 +313,6 @@ def test_metrics_config_defaults() -> None:
 
     mcfg = sample_cfg["metrics"]
     assert defaults.occupancy_threshold == mcfg["occupancy_threshold"]
-    assert defaults.min_identity == mcfg["min_identity"]
-    assert defaults.min_coverage == mcfg["min_coverage"]
     assert defaults.min_seq_length == mcfg["min_seq_length"]
 
 

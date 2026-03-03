@@ -2,58 +2,34 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
+import math
 from pathlib import Path
-from typing import Iterable
 
 from nevelib._common.fasta import iter_fasta_records
 
 
 @dataclass
 class AlignmentMetrics:
-    """Quality metrics for a multiple sequence alignment.
+    """Alignment coherence metrics aligned with NextEVE Stage_06 outputs."""
 
-    Attributes:
-        n_sequences: Number of sequences in the alignment.
-        alignment_length: Total alignment length (including gaps).
-        occupied_columns: Number of columns meeting the occupancy threshold.
-        mean_pairwise_identity: Mean fraction of identical residue pairs
-            across occupied columns (0.0-1.0). None if no occupied columns.
-        mean_coverage: Mean fraction of each sequence's original length
-            that is covered (non-gap) in the alignment. None if no
-            original lengths were provided.
-        n_coverage_pass: Number of sequences meeting the minimum coverage.
-        n_coverage_fail: Number of sequences below minimum coverage.
-        passing: Whether the alignment meets all quality thresholds.
-    """
-
-    n_sequences: int = 0
-    alignment_length: int = 0
-    occupied_columns: int = 0
-    mean_pairwise_identity: float | None = None
-    mean_coverage: float | None = None
-    n_coverage_pass: int = 0
-    n_coverage_fail: int = 0
-    passing: bool = False
+    n_total: int = 0
+    n_aligned: int = 0
+    shared_span_bp: int = 0
+    shared_span_frac: float = 0.0
+    median_identity: float | None = None
+    p10_identity: float | None = None
+    median_sequence_length: float | None = None
+    frac_length_ge_min: float | None = None
 
 
 @dataclass
 class MetricsConfig:
-    """Configuration for alignment quality metrics computation.
+    """Configuration for alignment coherence computation."""
 
-    Attributes:
-        occupancy_threshold: Minimum fraction of non-gap characters for a
-            column to be considered occupied.
-        min_identity: Minimum mean pairwise identity to pass.
-        min_coverage: Minimum mean coverage to pass.
-        min_seq_length: Minimum original sequence length included in
-            coverage statistics.
-    """
-
-    occupancy_threshold: float = 0.5
-    min_identity: float = 0.7
-    min_coverage: float = 0.5
-    min_seq_length: int = 0
+    occupancy_threshold: float = 0.60
+    min_seq_length: int = 80
 
 
 def parse_fasta_alignment(path: Path) -> dict[str, str]:
@@ -79,26 +55,20 @@ def parse_fasta_alignment(path: Path) -> dict[str, str]:
     return aligned
 
 
-def _mean(values: Iterable[float]) -> float | None:
-    """Compute arithmetic mean, returning None for empty iterables."""
-    vals = list(values)
-    if not vals:
-        return None
-    return float(sum(vals) / len(vals))
-
-
 def compute_alignment_metrics(
     aligned: dict[str, str],
     cfg: MetricsConfig,
     *,
+    core_lengths: dict[str, int] | None = None,
     original_lengths: dict[str, int] | None = None,
 ) -> AlignmentMetrics:
-    """Compute occupancy, identity, and coverage metrics for an alignment.
+    """Compute Stage_06-compatible alignment coherence metrics.
 
     Args:
         aligned: Mapping of sequence IDs to aligned sequence strings.
-        cfg: Metric threshold configuration.
-        original_lengths: Optional unaligned lengths for coverage statistics.
+        cfg: Coherence metric configuration.
+        core_lengths: Optional unaligned sequence-length mapping.
+        original_lengths: Deprecated alias for `core_lengths`.
 
     Returns:
         AlignmentMetrics summary object.
@@ -106,10 +76,29 @@ def compute_alignment_metrics(
     Raises:
         ValueError: If aligned sequences have inconsistent lengths.
     """
-    if not aligned:
-        return AlignmentMetrics()
+    lengths_map = (
+        core_lengths
+        if core_lengths is not None
+        else (
+            original_lengths
+            if original_lengths is not None
+            else {sid: sum(1 for ch in seq if ch != "-") for sid, seq in aligned.items()}
+        )
+    )
 
-    seq_ids = list(aligned.keys())
+    if not aligned:
+        return AlignmentMetrics(
+            n_total=len(lengths_map),
+            n_aligned=0,
+            shared_span_bp=0,
+            shared_span_frac=0.0,
+            median_identity=None,
+            p10_identity=None,
+            median_sequence_length=None,
+            frac_length_ge_min=None,
+        )
+
+    seq_ids = sorted(aligned.keys())
     seqs = [aligned[sid] for sid in seq_ids]
     aln_len = len(seqs[0])
 
@@ -123,52 +112,58 @@ def compute_alignment_metrics(
         if (non_gap / max(1, n_sequences)) >= float(cfg.occupancy_threshold):
             occupied_columns.append(col_idx)
 
-    identity_values: list[float] = []
+    consensus: list[str] = []
     for col_idx in occupied_columns:
-        residues = [seq[col_idx].upper() for seq in seqs if seq[col_idx] != "-"]
-        n = len(residues)
-        if n < 2:
-            continue
+        residues = [seq[col_idx].upper() for seq in seqs]
+        counts = Counter(residue for residue in residues if residue in {"A", "C", "G", "T"})
+        consensus.append(counts.most_common(1)[0][0] if counts else "N")
 
-        total_pairs = n * (n - 1) // 2
-        counts: dict[str, int] = {}
-        for residue in residues:
-            counts[residue] = counts.get(residue, 0) + 1
-        matching_pairs = sum(count * (count - 1) // 2 for count in counts.values())
-        identity_values.append(float(matching_pairs / total_pairs))
-
-    mean_pairwise_identity = _mean(identity_values)
-
-    mean_coverage: float | None = None
-    n_coverage_pass = 0
-    n_coverage_fail = 0
-
-    if original_lengths:
-        coverage_values: list[float] = []
-        for seq_id, aligned_seq in aligned.items():
-            orig_len = int(original_lengths.get(seq_id, 0) or 0)
-            if orig_len < int(cfg.min_seq_length) or orig_len <= 0:
+    identities: list[float] = []
+    for seq in seqs:
+        matches = 0
+        denom = 0
+        for idx, col_idx in enumerate(occupied_columns):
+            char = seq[col_idx].upper()
+            if char == "-":
                 continue
-            non_gap = sum(1 for char in aligned_seq if char != "-")
-            coverage = float(non_gap / orig_len)
-            coverage_values.append(coverage)
-            if coverage >= float(cfg.min_coverage):
-                n_coverage_pass += 1
-            else:
-                n_coverage_fail += 1
+            denom += 1
+            if char == consensus[idx]:
+                matches += 1
+        identities.append((matches / denom) if denom > 0 else 0.0)
 
-        mean_coverage = _mean(coverage_values)
+    identities_sorted = sorted(identities)
+    median_identity: float | None = None
+    p10_identity: float | None = None
+    if identities_sorted:
+        mid = len(identities_sorted) // 2
+        if len(identities_sorted) % 2 == 1:
+            median_identity = float(identities_sorted[mid])
+        else:
+            median_identity = 0.5 * (identities_sorted[mid - 1] + identities_sorted[mid])
+        p10_idx = max(0, int(math.floor(0.10 * (len(identities_sorted) - 1))))
+        p10_identity = float(identities_sorted[p10_idx])
 
-    identity_pass = mean_pairwise_identity is not None and mean_pairwise_identity >= float(cfg.min_identity)
-    coverage_pass = mean_coverage is None or mean_coverage >= float(cfg.min_coverage)
+    lengths = [int(lengths_map.get(seq_id, 0) or 0) for seq_id in seq_ids]
+    lengths_sorted = sorted(lengths)
+    median_sequence_length: float | None = None
+    if lengths_sorted:
+        mid = len(lengths_sorted) // 2
+        if len(lengths_sorted) % 2 == 1:
+            median_sequence_length = float(lengths_sorted[mid])
+        else:
+            median_sequence_length = 0.5 * (lengths_sorted[mid - 1] + lengths_sorted[mid])
+
+    frac_length_ge_min: float | None = None
+    if lengths:
+        frac_length_ge_min = sum(1 for x in lengths if x >= int(cfg.min_seq_length)) / max(1, len(lengths))
 
     return AlignmentMetrics(
-        n_sequences=n_sequences,
-        alignment_length=aln_len,
-        occupied_columns=len(occupied_columns),
-        mean_pairwise_identity=mean_pairwise_identity,
-        mean_coverage=mean_coverage,
-        n_coverage_pass=n_coverage_pass,
-        n_coverage_fail=n_coverage_fail,
-        passing=bool(identity_pass and coverage_pass),
+        n_total=len(lengths_map),
+        n_aligned=len(seq_ids),
+        shared_span_bp=len(occupied_columns),
+        shared_span_frac=float(len(occupied_columns) / max(1, aln_len)),
+        median_identity=median_identity,
+        p10_identity=p10_identity,
+        median_sequence_length=median_sequence_length,
+        frac_length_ge_min=frac_length_ge_min,
     )

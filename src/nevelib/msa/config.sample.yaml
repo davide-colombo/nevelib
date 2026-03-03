@@ -22,10 +22,8 @@ mafft:
 # --- Alignment quality metrics ---
 metrics:
   enabled: true                          # Compute alignment quality metrics
-  occupancy_threshold: 0.5               # Min fraction of non-gap chars for a column to be "occupied"
-  min_identity: 0.7                      # Min mean pairwise identity to pass
-  min_coverage: 0.5                      # Min mean coverage to pass
-  min_seq_length: 0                      # Min original sequence length for coverage calculation
+  occupancy_threshold: 0.60              # Min fraction of non-gap chars for a column to be in shared span
+  min_seq_length: 80                     # Length threshold for frac_length_ge_min
 
 # --- Validation ---
 validation:

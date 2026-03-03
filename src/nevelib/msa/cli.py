@@ -34,10 +34,8 @@ _DEFAULTS: dict = {
     },
     "metrics": {
         "enabled": True,
-        "occupancy_threshold": 0.5,
-        "min_identity": 0.7,
-        "min_coverage": 0.5,
-        "min_seq_length": 0,
+        "occupancy_threshold": 0.60,
+        "min_seq_length": 80,
     },
     "validation": {
         "skip_input": False,
@@ -126,35 +124,43 @@ def main() -> None:
 
         met_cfg = MetricsConfig(
             occupancy_threshold=float(metrics_cfg["occupancy_threshold"]),
-            min_identity=float(metrics_cfg["min_identity"]),
-            min_coverage=float(metrics_cfg["min_coverage"]),
             min_seq_length=int(metrics_cfg.get("min_seq_length", 0)),
         )
 
         metrics = compute_alignment_metrics(
             aligned,
             met_cfg,
-            original_lengths=original_lengths,
+            core_lengths=original_lengths,
         )
 
         with metrics_path.open("w", encoding="utf-8") as handle:
             handle.write("metric\tvalue\n")
-            handle.write(f"n_sequences\t{metrics.n_sequences}\n")
-            handle.write(f"alignment_length\t{metrics.alignment_length}\n")
-            handle.write(f"occupied_columns\t{metrics.occupied_columns}\n")
-            mpi = (
-                f"{metrics.mean_pairwise_identity:.6f}"
-                if metrics.mean_pairwise_identity is not None
+            handle.write(f"n_total\t{metrics.n_total}\n")
+            handle.write(f"n_aligned\t{metrics.n_aligned}\n")
+            handle.write(f"shared_span_bp\t{metrics.shared_span_bp}\n")
+            handle.write(f"shared_span_frac\t{metrics.shared_span_frac:.6f}\n")
+            median_id = (
+                f"{metrics.median_identity:.6f}"
+                if metrics.median_identity is not None
                 else "NA"
             )
-            handle.write(f"mean_pairwise_identity\t{mpi}\n")
-            mcov = f"{metrics.mean_coverage:.6f}" if metrics.mean_coverage is not None else "NA"
-            handle.write(f"mean_coverage\t{mcov}\n")
-            handle.write(f"n_coverage_pass\t{metrics.n_coverage_pass}\n")
-            handle.write(f"n_coverage_fail\t{metrics.n_coverage_fail}\n")
-            handle.write(f"passing\t{metrics.passing}\n")
+            handle.write(f"median_identity\t{median_id}\n")
+            p10_id = f"{metrics.p10_identity:.6f}" if metrics.p10_identity is not None else "NA"
+            handle.write(f"p10_identity\t{p10_id}\n")
+            median_len = (
+                f"{metrics.median_sequence_length:.6f}"
+                if metrics.median_sequence_length is not None
+                else "NA"
+            )
+            handle.write(f"median_sequence_length\t{median_len}\n")
+            frac_len = (
+                f"{metrics.frac_length_ge_min:.6f}"
+                if metrics.frac_length_ge_min is not None
+                else "NA"
+            )
+            handle.write(f"frac_length_ge_min\t{frac_len}\n")
 
-        logger.info("Metrics written to %s (passing=%s)", metrics_path, metrics.passing)
+        logger.info("Metrics written to %s", metrics_path)
 
 
 if __name__ == "__main__":

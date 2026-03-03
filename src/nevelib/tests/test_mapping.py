@@ -407,26 +407,26 @@ def test_filter_paf_records_no_filters() -> None:
     assert len(filtered) == 2
 
 
-def test_best_hit_per_query_selects_highest_nmatch() -> None:
-    """Best-hit selection uses nmatch by default."""
+def test_best_hit_per_query_selects_highest_mapq() -> None:
+    """Best-hit selection uses mapq as the default primary metric."""
     records = [
+        _make_record(qname="q1", nmatch=95, mapq=30),
         _make_record(qname="q1", nmatch=50, mapq=60),
-        _make_record(qname="q1", nmatch=90, mapq=30),
     ]
 
     best = best_hit_per_query(records)
-    assert best["q1"].nmatch == 90
+    assert best["q1"].mapq == 60
 
 
 def test_best_hit_per_query_tiebreak_by_mapq() -> None:
-    """Tie on nmatch is resolved by mapq descending."""
+    """Tie on mapq is resolved by aln_len descending."""
     records = [
-        _make_record(qname="q1", nmatch=90, mapq=20),
-        _make_record(qname="q1", nmatch=90, mapq=50),
+        _make_record(qname="q1", mapq=50, aln_len=80, nmatch=90),
+        _make_record(qname="q1", mapq=50, aln_len=120, nmatch=70),
     ]
 
     best = best_hit_per_query(records)
-    assert best["q1"].mapq == 50
+    assert best["q1"].aln_len == 120
 
 
 def test_best_hit_per_query_deterministic_for_equal_scores() -> None:
