@@ -178,6 +178,7 @@ def run_tool(
         merged_env.update(env)
 
     use_shell = isinstance(cmd, str)
+    shell_executable = "/bin/bash" if use_shell else None
     display_cmd = _command_display(cmd)
     LOGGER.debug("Running command: %s", display_cmd)
 
@@ -197,6 +198,7 @@ def run_tool(
         proc = subprocess.run(
             cmd,
             shell=use_shell,
+            executable=shell_executable,
             stdout=out_handle if out_handle is not None else subprocess.PIPE,
             stderr=err_handle if err_handle is not None else subprocess.PIPE,
             check=False,
