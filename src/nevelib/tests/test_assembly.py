@@ -45,6 +45,7 @@ def test_normalize_config_defaults() -> None:
     assert cfg.min_depth == 5
     assert cfg.threads == 8
     assert cfg.memory == "8g"
+    assert cfg.seed is None
     assert cfg.extra_args is None
 
 
@@ -133,6 +134,37 @@ def test_normalize_pairs_with_extra_args(
     cmd = seen["cmd"]
     assert "passes=2" in cmd
     assert "prefilter=t" in cmd
+
+
+def test_normalize_pairs_appends_seed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    r1_in = tmp_path / "R1.fastq.gz"
+    r2_in = tmp_path / "R2.fastq.gz"
+    r1_out = tmp_path / "R1.norm.fastq.gz"
+    r2_out = tmp_path / "R2.norm.fastq.gz"
+
+    _write_fastq(r1_in, [("x/1", "ACGT", "IIII")])
+    _write_fastq(r2_in, [("x/2", "TGCA", "IIII")])
+
+    seen: dict[str, list[str]] = {}
+
+    def _fake_run_tool(cmd, **_kwargs):
+        seen["cmd"] = cmd
+        _write_fastq(r1_out, [("x/1", "ACGT", "IIII")])
+        _write_fastq(r2_out, [("x/2", "TGCA", "IIII")])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "nevelib.assembly.normalize.check_tool",
+        lambda *_a, **_k: ToolInfo(name="bbnorm.sh", available=True, path=Path("/usr/bin/bbnorm.sh")),
+    )
+    monkeypatch.setattr("nevelib.assembly.normalize.run_tool", _fake_run_tool)
+
+    normalize_pairs(r1_in, r2_in, r1_out, r2_out, NormalizeConfig(seed=42))
+
+    assert "seed=42" in seen["cmd"]
 
 
 def test_normalize_pairs_empty_input_bypass(

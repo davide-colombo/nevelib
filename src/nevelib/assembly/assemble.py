@@ -148,6 +148,7 @@ def assemble_reads(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # SPAdes does not expose a public seed flag, so assembly output may vary across runs.
     cmd: list[str] = [
         cfg.spades_exec,
         "-1",

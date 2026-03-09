@@ -91,6 +91,7 @@ def run_mmseqs_linclust(
     output_prefix.parent.mkdir(parents=True, exist_ok=True)
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
+    # MMseqs2 easy-linclust does not expose a public seed flag, so clustering output may vary across runs.
     cmd = [
         cfg.mmseqs_exec,
         "easy-linclust",

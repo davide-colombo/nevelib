@@ -16,6 +16,7 @@ normalization:
   min_depth: 5
   threads: 8
   memory: "8g"
+  seed: null                           # Optional reproducibility seed for BBNorm
   extra_args: null
 
 assembly:

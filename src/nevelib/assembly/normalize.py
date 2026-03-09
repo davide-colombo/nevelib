@@ -29,6 +29,7 @@ class NormalizeConfig:
     min_depth: int = 5
     threads: int = 8
     memory: str = "8g"
+    seed: int | None = None
     extra_args: list[str] | None = None
 
 
@@ -108,6 +109,8 @@ def normalize_pairs(
         f"threads={max(1, int(cfg.threads))}",
         f"-Xmx{cfg.memory}",
     ]
+    if cfg.seed is not None:
+        cmd.append(f"seed={int(cfg.seed)}")
     if cfg.extra_args:
         cmd.extend(str(arg) for arg in cfg.extra_args)
 

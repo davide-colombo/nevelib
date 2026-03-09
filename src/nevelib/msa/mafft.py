@@ -126,6 +126,7 @@ def run_mafft(
 
     _ensure_mafft_available(cfg.mafft_exec)
 
+    # MAFFT does not expose a public seed flag here, so alignment output may vary across runs.
     cmd = [
         cfg.mafft_exec,
         "--thread",
@@ -179,6 +180,7 @@ def run_mafft_seed_and_add(
     threads = str(max(1, int(cfg.threads)))
     extra_args = [str(arg) for arg in (cfg.extra_args or [])]
 
+    # MAFFT does not expose a public seed flag here, so alignment output may vary across runs.
     cmd_seed = [cfg.mafft_exec]
     if cfg.auto:
         cmd_seed.append("--auto")
@@ -205,6 +207,7 @@ def run_mafft_seed_and_add(
     seed_alignment_path = output_alignment.with_suffix(".seed.aln.fasta")
     seed_alignment_path.write_text(seed_alignment, encoding="utf-8")
 
+    # MAFFT add-fragments does not expose a public seed flag here, so final output may vary across runs.
     cmd_add = [
         cfg.mafft_exec,
         "--addfragments",

@@ -37,6 +37,7 @@ _DEFAULTS: dict = {
         "min_depth": 5,
         "threads": 8,
         "memory": "8g",
+        "seed": None,
         "extra_args": None,
     },
     "assembly": {
@@ -179,6 +180,7 @@ def main() -> None:
             min_depth=int(norm_cfg_raw["min_depth"]),
             threads=int(norm_cfg_raw["threads"]),
             memory=str(norm_cfg_raw["memory"]),
+            seed=(int(norm_cfg_raw["seed"]) if norm_cfg_raw.get("seed") is not None else None),
             extra_args=norm_cfg_raw.get("extra_args"),
         )
 
