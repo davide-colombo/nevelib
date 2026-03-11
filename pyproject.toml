@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nevelib"
-version = "0.1.0"
+version = "0.3.0"
 description = "A modular bioinformatics library for genomic sequence analysis: read extraction, assembly, homology search, clustering, multiple sequence alignment, and read mapping."
 readme = "README.md"
 license = "MIT"
@@ -13,15 +13,6 @@ authors = [
     { name = "Davide Colombo" },
 ]
 keywords = ["bioinformatics", "genomics", "blast", "assembly", "clustering", "alignment"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Science/Research",
-    "Topic :: Scientific/Engineering :: Bio-Informatics",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
-    "License :: OSI Approved :: MIT License",
-]
-
 dependencies = [
     "pyyaml>=6.0",
     "pandas>=2.0",
@@ -29,6 +20,22 @@ dependencies = [
     "biopython>=1.80",
     "pyfaidx>=0.8",
 ]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "License :: OSI Approved :: MIT License",
+]
+
+[project.urls]
+Homepage = "https://nevelib-website.vercel.app/"
+Repository = "https://github.com/davide-colombo/nevelib"
+Issues = "https://github.com/davide-colombo/nevelib/issues"
 
 [project.optional-dependencies]
 confirm = ["pysam>=0.22"]
@@ -50,6 +57,14 @@ nevelib-mapping = "nevelib.mapping.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nevelib"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/nevelib/reads/config.sample.yaml" = "nevelib/reads/config.sample.yaml"
+"src/nevelib/assembly/config.sample.yaml" = "nevelib/assembly/config.sample.yaml"
+"src/nevelib/search/config.sample.yaml" = "nevelib/search/config.sample.yaml"
+"src/nevelib/clustering/config.sample.yaml" = "nevelib/clustering/config.sample.yaml"
+"src/nevelib/msa/config.sample.yaml" = "nevelib/msa/config.sample.yaml"
+"src/nevelib/mapping/config.sample.yaml" = "nevelib/mapping/config.sample.yaml"
 
 [tool.pytest.ini_options]
 testpaths = ["src/nevelib/tests"]
