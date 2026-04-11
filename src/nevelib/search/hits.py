@@ -477,6 +477,157 @@ def prune_contained_intervals(
     return pruned, removed_by_group
 
 
+def merge_blast_hits_to_regions(
+    df: pd.DataFrame,
+    *,
+    group_col: str = "qseqid",
+    start_col: str = "qstart",
+    end_col: str = "qend",
+    max_gap_bp: int = 0,
+    representative_by: str = "bitscore",
+    representative_tiebreak: str = "evalue",
+    payload_cols: list[str] | None = None,
+) -> tuple[pd.DataFrame, pd.Series]:
+    """Collapse BLAST hits into merged regions within each query group.
+
+    Args:
+        df: Input DataFrame of BLAST hits.
+        group_col: Column used for grouping independent interval sets.
+        start_col: Interval start column.
+        end_col: Interval end column.
+        max_gap_bp: Maximum uncovered gap allowed between neighboring hits.
+        representative_by: Column used to select the representative hit by maximum value.
+        representative_tiebreak: Column used to break representative ties by minimum value.
+        payload_cols: Additional representative-hit columns copied to the region output.
+            When `None`, all non-coordinate columns are carried.
+
+    Returns:
+        Tuple of `(regions_df, hit_to_region_id)`, where `regions_df` contains one
+        row per merged region and `hit_to_region_id` maps each input hit index to
+        its assigned region identifier.
+
+    Raises:
+        KeyError: If a required input column is missing.
+        ValueError: If `max_gap_bp` is negative or any row has `start_col > end_col`.
+
+    Example:
+        >>> df = pd.DataFrame(
+        ...     [
+        ...         {"qseqid": "host_scaffold_1", "qstart": 100, "qend": 250, "bitscore": 80.0, "evalue": 1e-8},
+        ...         {"qseqid": "host_scaffold_1", "qstart": 401, "qend": 520, "bitscore": 95.0, "evalue": 1e-12},
+        ...     ]
+        ... )
+        >>> regions, hit_to_region = merge_blast_hits_to_regions(df, max_gap_bp=200)
+        >>> regions[["region_start", "region_end", "n_collapsed_hits"]].to_dict("records")
+        [{'region_start': 100, 'region_end': 520, 'n_collapsed_hits': 2}]
+    """
+    if max_gap_bp < 0:
+        raise ValueError("max_gap_bp must be >= 0.")
+
+    required = [group_col, start_col, end_col, representative_by, representative_tiebreak]
+    for col in required:
+        if col not in df.columns:
+            raise KeyError(f"Missing required column: {col}")
+
+    invalid_mask = df[start_col] > df[end_col]
+    if invalid_mask.any():
+        bad_index = df.index[invalid_mask][0]
+        raise ValueError(f"{start_col} > {end_col} for row index {bad_index}")
+
+    if payload_cols is None:
+        payload_columns = [col for col in df.columns if col not in {group_col, start_col, end_col}]
+    else:
+        payload_columns = list(payload_cols)
+        for col in payload_columns:
+            if col not in df.columns:
+                raise KeyError(f"Missing required column: {col}")
+
+    region_columns = [
+        "region_id",
+        group_col,
+        "region_start",
+        "region_end",
+        "region_length",
+        "n_collapsed_hits",
+        *payload_columns,
+    ]
+
+    if df.empty:
+        empty_regions = pd.DataFrame(columns=region_columns)
+        empty_mapping = pd.Series(index=df.index, dtype="int64", name="region_id")
+        return empty_regions, empty_mapping
+
+    work = df.copy()
+    work["__original_index"] = work.index
+    work["__input_pos"] = np.arange(len(work), dtype=np.int64)
+    work = work.sort_values(
+        by=[group_col, start_col, end_col, "__original_index"],
+        kind="mergesort",
+    ).set_index("__input_pos", drop=False)
+
+    committed_regions: list[tuple[object, int, int, list[int]]] = []
+
+    for group_value, group in work.groupby(group_col, sort=False):
+        open_start: int | None = None
+        open_end: int | None = None
+        member_positions: list[int] = []
+
+        for hit_start, hit_end, input_pos in group[[start_col, end_col, "__input_pos"]].itertuples(index=False, name=None):
+            hit_start = int(hit_start)
+            hit_end = int(hit_end)
+            input_pos = int(input_pos)
+
+            if open_start is None:
+                open_start = hit_start
+                open_end = hit_end
+                member_positions = [input_pos]
+                continue
+
+            assert open_end is not None
+            if hit_start <= open_end + int(max_gap_bp) + 1:
+                open_end = max(open_end, hit_end)
+                member_positions.append(input_pos)
+                continue
+
+            committed_regions.append((group_value, open_start, open_end, member_positions))
+            open_start = hit_start
+            open_end = hit_end
+            member_positions = [input_pos]
+
+        if open_start is not None and open_end is not None:
+            committed_regions.append((group_value, open_start, open_end, member_positions))
+
+    region_rows: list[dict[str, object]] = []
+    region_assignments = pd.Series(index=work["__input_pos"], dtype="int64", name="region_id")
+
+    for region_id, (group_value, region_start, region_end, member_positions) in enumerate(committed_regions, start=1):
+        region_hits = work.loc[member_positions]
+        representative = region_hits.sort_values(
+            by=[representative_by, representative_tiebreak, "__original_index"],
+            ascending=[False, True, True],
+            kind="mergesort",
+        ).iloc[0]
+
+        region_row: dict[str, object] = {
+            "region_id": region_id,
+            group_col: group_value,
+            "region_start": int(region_start),
+            "region_end": int(region_end),
+            "region_length": int(region_end - region_start + 1),
+            "n_collapsed_hits": len(member_positions),
+        }
+        for col in payload_columns:
+            region_row[col] = representative[col]
+
+        region_rows.append(region_row)
+        region_assignments.loc[member_positions] = region_id
+
+    regions_df = pd.DataFrame(region_rows, columns=region_columns)
+    hit_to_region_id = region_assignments.sort_index()
+    hit_to_region_id.index = df.index
+    return regions_df, hit_to_region_id
+
+
 def filter_hits_by_bitscore_fraction(
     df: pd.DataFrame,
     *,
