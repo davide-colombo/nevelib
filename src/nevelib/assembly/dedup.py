@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
 from pathlib import Path
 import subprocess
 
@@ -120,6 +121,7 @@ def deduplicate_contigs(
     workdir: Path | None = None,
     out_log: Path | None = None,
     err_log: Path | None = None,
+    logger: logging.Logger | None = None,
 ) -> DedupResult:
     """Remove contained contigs using self-BLAST comparisons.
 
@@ -130,6 +132,7 @@ def deduplicate_contigs(
         workdir: Optional directory for BLAST intermediate files.
         out_log: Optional stdout log path.
         err_log: Optional stderr log path.
+        logger: Optional logger receiving external tool lifecycle messages.
 
     Returns:
         DedupResult summary.
@@ -197,8 +200,8 @@ def deduplicate_contigs(
         blastn_cmd.extend(str(arg) for arg in cfg.extra_args)
 
     try:
-        run_tool(makeblastdb_cmd, out_log=out_log, err_log=err_log, check=True)
-        run_tool(blastn_cmd, out_log=out_log, err_log=err_log, check=True)
+        run_tool(makeblastdb_cmd, out_log=out_log, err_log=err_log, check=True, logger=logger)
+        run_tool(blastn_cmd, out_log=out_log, err_log=err_log, check=True, logger=logger)
     except subprocess.CalledProcessError as exc:
         detail = _extract_stderr(exc)
         msg = f"Deduplication BLAST command failed with exit code {exc.returncode}"
