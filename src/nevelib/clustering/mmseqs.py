@@ -7,6 +7,7 @@ and resolving the generated cluster assignment TSV.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 import shutil
 import subprocess
@@ -55,6 +56,9 @@ def run_mmseqs_linclust(
     output_prefix: Path,
     tmp_dir: Path,
     cfg: MmseqsConfig,
+    *,
+    err_log: Path | None = None,
+    logger: logging.Logger | None = None,
 ) -> Path:
     """Run MMseqs2 easy-linclust for sequence clustering.
 
@@ -63,6 +67,8 @@ def run_mmseqs_linclust(
         output_prefix: Output prefix used by MMseqs2.
         tmp_dir: Temporary working directory for MMseqs2 internals.
         cfg: MMseqs2 execution and threshold parameters.
+        err_log: Optional path receiving MMseqs2 stderr.
+        logger: Optional logger receiving subprocess lifecycle messages.
 
     Returns:
         Path to the generated cluster TSV file.
@@ -117,7 +123,7 @@ def run_mmseqs_linclust(
         cmd.extend(["--split-memory-limit", str(cfg.split_memory_limit)])
 
     try:
-        run_tool(cmd, check=True)
+        run_tool(cmd, err_log=err_log, check=True, logger=logger)
     except (subprocess.CalledProcessError, FileNotFoundError) as exc:
         raise RuntimeError(f"MMseqs2 easy-linclust failed: {exc}") from exc
     finally:

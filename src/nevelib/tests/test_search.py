@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 import subprocess
 
@@ -162,6 +163,32 @@ def test_run_blastn_with_extra_args(
 
     cmd = seen["cmd"]
     assert cmd[-2:] == ["-task", "blastn-short"]
+
+
+def test_run_blastn_threads_logger_to_run_tool(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """run_blastn forwards the injected logger to run_tool."""
+    query = tmp_path / "query.fasta"
+    _write_query_fasta(query)
+    db_prefix = tmp_path / "db" / "core"
+    _write_fake_db(db_prefix)
+    logger = logging.getLogger("test.blast.logger")
+    captured: dict[str, object] = {}
+
+    def _fake_run_tool(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        captured["kwargs"] = kwargs
+        Path(cmd[cmd.index("-out") + 1]).write_text("", encoding="utf-8")
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("nevelib.search.blast.check_tool", lambda *_a, **_k: ToolInfo("blastn", True, path=Path("/usr/bin/blastn")))
+    monkeypatch.setattr("nevelib.search.blast.run_tool", _fake_run_tool)
+
+    cfg = BlastConfig(db_prefix=str(db_prefix))
+    run_blastn(query, tmp_path / "raw.tsv", cfg, logger=logger)
+
+    assert captured["kwargs"]["logger"] is logger
 
 
 def test_run_blastx_uses_blastx_binary(

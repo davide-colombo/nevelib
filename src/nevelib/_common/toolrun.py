@@ -14,6 +14,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import time
 from typing import Iterable
 
 
@@ -68,6 +69,19 @@ def _command_display(cmd: list[str] | str) -> str:
     return shlex.join(cmd)
 
 
+def _tool_name(cmd: list[str] | str) -> str:
+    """Return the executable name from a command for process lifecycle logs."""
+    if isinstance(cmd, str):
+        try:
+            parts = shlex.split(cmd)
+        except ValueError:
+            parts = []
+        if not parts:
+            return "<shell>"
+        return Path(parts[0]).name
+    return Path(str(cmd[0])).name
+
+
 def _stderr_tail_from_text(stderr: str | bytes | None, *, n: int = 20) -> str:
     """Return the last `n` stderr lines from captured process output."""
     if stderr is None:
@@ -87,6 +101,26 @@ def _stderr_tail_from_file(path: Path | None, *, n: int = 20) -> str:
     text = path.read_text(encoding="utf-8", errors="replace")
     lines = text.splitlines()
     return "\n".join(lines[-n:])
+
+
+def _fallback_stderr_path(tool: str, pid: int) -> Path:
+    """Build a layout-agnostic fallback stderr path in the current directory."""
+    safe_tool = re.sub(r"[^A-Za-z0-9_.-]+", "_", tool).strip("._") or "tool"
+    timestamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    return Path.cwd() / f"{safe_tool}.{pid}.{timestamp}.stderr.log"
+
+
+def _write_fallback_stderr(tool: str, pid: int, stderr: str | bytes | None) -> Path | None:
+    """Persist captured stderr for a failed command that had no caller-owned log path."""
+    if stderr is None:
+        return None
+    if isinstance(stderr, bytes):
+        text = stderr.decode("utf-8", errors="replace")
+    else:
+        text = stderr
+    fallback_path = _fallback_stderr_path(tool, pid)
+    fallback_path.write_text(text, encoding="utf-8")
+    return fallback_path
 
 
 def check_tool(
@@ -152,6 +186,7 @@ def run_tool(
     check: bool = True,
     timeout: int | None = None,
     env: dict[str, str] | None = None,
+    logger: logging.Logger | None = None,
 ) -> subprocess.CompletedProcess:
     """Run an external tool with standardized logging and error handling.
 
@@ -162,6 +197,7 @@ def run_tool(
         check: Raise CalledProcessError on non-zero exit.
         timeout: Timeout in seconds (None for no timeout).
         env: Environment variables to set (merged with os.environ).
+        logger: Logger receiving subprocess lifecycle messages. Uses module logger when None.
 
     Returns:
         subprocess.CompletedProcess with the result.
@@ -180,7 +216,10 @@ def run_tool(
     use_shell = isinstance(cmd, str)
     shell_executable = "/bin/bash" if use_shell else None
     display_cmd = _command_display(cmd)
-    LOGGER.debug("Running command: %s", display_cmd)
+    log = logger if logger is not None else LOGGER
+    tool = _tool_name(cmd)
+    stderr_artifact = str(err_log) if err_log is not None else "<in-memory>"
+    log.debug("Running command: %s", display_cmd)
 
     if out_log is not None:
         out_log.parent.mkdir(parents=True, exist_ok=True)
@@ -195,16 +234,44 @@ def run_tool(
         if err_log is not None:
             err_handle = err_log.open("w", encoding="utf-8")
 
-        proc = subprocess.run(
+        start = time.monotonic()
+        popen = subprocess.Popen(
             cmd,
             shell=use_shell,
             executable=shell_executable,
             stdout=out_handle if out_handle is not None else subprocess.PIPE,
             stderr=err_handle if err_handle is not None else subprocess.PIPE,
-            check=False,
-            timeout=timeout,
             env=merged_env,
             text=True,
+        )
+        log.info(
+            "[PROC.START] tool=%s pid=%s cmd=%s stderr_log=%s",
+            tool,
+            popen.pid,
+            display_cmd,
+            stderr_artifact,
+        )
+        try:
+            stdout, stderr = popen.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            log.error(
+                "[PROC.TIMEOUT] tool=%s timeout_s=%s pid=%s cmd=%s",
+                tool,
+                timeout,
+                popen.pid,
+                display_cmd,
+            )
+            popen.kill()
+            stdout, stderr = popen.communicate()
+            exc.output = stdout
+            exc.stderr = stderr
+            raise
+
+        proc = subprocess.CompletedProcess(
+            args=cmd,
+            returncode=popen.returncode,
+            stdout=stdout,
+            stderr=stderr,
         )
     finally:
         if out_handle is not None:
@@ -213,11 +280,27 @@ def run_tool(
             err_handle.close()
 
     if check and proc.returncode != 0:
+        fallback_err_log = None
+        if err_log is None:
+            fallback_err_log = _write_fallback_stderr(tool, popen.pid, proc.stderr)
+        stderr_log_path = fallback_err_log if fallback_err_log is not None else err_log
         stderr_tail = _stderr_tail_from_text(proc.stderr)
         if not stderr_tail:
-            stderr_tail = _stderr_tail_from_file(err_log)
+            stderr_tail = _stderr_tail_from_file(stderr_log_path)
+        elapsed = time.monotonic() - start
+        stderr_artifact = str(stderr_log_path) if stderr_log_path is not None else "<in-memory>"
+        log.error(
+            "[PROC.FAIL] tool=%s returncode=%s duration_s=%.3f stderr_log=%s\n"
+            "stderr tail:\n%s",
+            tool,
+            proc.returncode,
+            elapsed,
+            stderr_artifact,
+            stderr_tail or "<no stderr output>",
+        )
         detail = (
             f"Command failed with exit code {proc.returncode}: {display_cmd}\n"
+            f"stderr log: {stderr_artifact}\n"
             f"stderr tail (last 20 lines):\n{stderr_tail or '<no stderr output>'}"
         )
         exc = subprocess.CalledProcessError(
@@ -229,4 +312,12 @@ def run_tool(
         exc.add_note(detail)
         raise exc
 
+    elapsed = time.monotonic() - start
+    log.info(
+        "[PROC.DONE] tool=%s returncode=%s duration_s=%.3f stderr_log=%s",
+        tool,
+        proc.returncode,
+        elapsed,
+        stderr_artifact,
+    )
     return proc

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 import subprocess
 
@@ -118,8 +119,12 @@ def test_run_tool_captures_stdout() -> None:
     assert (proc.stdout or "").strip() == "hello"
 
 
-def test_run_tool_raises_on_nonzero_exit() -> None:
+def test_run_tool_raises_on_nonzero_exit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """run_tool raises CalledProcessError on non-zero exit with check=True."""
+    monkeypatch.chdir(tmp_path)
     with pytest.raises(subprocess.CalledProcessError):
         run_tool(["/bin/sh", "-c", "exit 5"], check=True)
 
@@ -141,6 +146,62 @@ def test_run_tool_writes_log_files(tmp_path: Path) -> None:
     assert err_log.exists()
     assert "OUT" in out_log.read_text(encoding="utf-8")
     assert "ERR" in err_log.read_text(encoding="utf-8")
+
+
+def test_run_tool_logs_process_lifecycle_on_success(caplog: pytest.LogCaptureFixture) -> None:
+    """run_tool logs process start and successful completion."""
+    logger = logging.getLogger("test.run_tool.success")
+    caplog.set_level(logging.INFO, logger=logger.name)
+
+    proc = run_tool(["python3", "-c", "print('ok')"], check=True, logger=logger)
+
+    assert proc.returncode == 0
+    messages = [record.getMessage() for record in caplog.records if record.name == logger.name]
+    assert any("[PROC.START] tool=python3" in message for message in messages)
+    assert any("[PROC.DONE] tool=python3 returncode=0" in message for message in messages)
+
+
+def test_run_tool_failure_logs_and_writes_fallback_stderr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Failed in-memory stderr is persisted to a fallback artifact before raising."""
+    logger = logging.getLogger("test.run_tool.failure")
+    caplog.set_level(logging.INFO, logger=logger.name)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(subprocess.CalledProcessError) as exc_info:
+        run_tool(
+            ["python3", "-c", "import sys; print('bad stderr', file=sys.stderr); sys.exit(5)"],
+            check=True,
+            logger=logger,
+        )
+
+    fallback_logs = list(tmp_path.glob("python3.*.stderr.log"))
+    assert len(fallback_logs) == 1
+    assert "bad stderr" in fallback_logs[0].read_text(encoding="utf-8")
+    assert any(str(fallback_logs[0]) in note for note in getattr(exc_info.value, "__notes__", []))
+
+    messages = [record.getMessage() for record in caplog.records if record.name == logger.name]
+    assert any("[PROC.FAIL] tool=python3 returncode=5" in message for message in messages)
+    assert any(str(fallback_logs[0]) in message for message in messages)
+
+
+def test_run_tool_uses_injected_logger(caplog: pytest.LogCaptureFixture) -> None:
+    """Process lifecycle records are emitted through the injected logger."""
+    logger = logging.getLogger("test.run_tool.injected")
+    caplog.set_level(logging.INFO, logger=logger.name)
+
+    run_tool(["python3", "-c", "print('ok')"], check=True, logger=logger)
+
+    lifecycle_records = [
+        record
+        for record in caplog.records
+        if "[PROC." in record.getMessage()
+    ]
+    assert lifecycle_records
+    assert {record.name for record in lifecycle_records} == {logger.name}
 
 
 def test_load_config_valid_yaml(tmp_path: Path) -> None:

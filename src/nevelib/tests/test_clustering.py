@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 import subprocess
 
@@ -134,6 +135,45 @@ def test_run_mmseqs_linclust_success_cleans_tmp(
 
     assert cluster_tsv.exists()
     assert not tmp_dir.exists()
+
+
+def test_run_mmseqs_linclust_threads_logger_and_err_log(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MMseqs wrapper forwards both logger and caller-owned stderr path."""
+    fasta = tmp_path / "input.fasta"
+    fasta.write_text(">seq1\nACGT\n", encoding="utf-8")
+    output_prefix = tmp_path / "linclust"
+    tmp_dir = tmp_path / "mmseqs_tmp"
+    err_log = tmp_path / "mmseqs.stderr.log"
+    logger = logging.getLogger("test.mmseqs.logger")
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(
+        "nevelib.clustering.mmseqs.check_tool",
+        lambda *_a, **_k: ToolInfo(name="mmseqs", available=True, path=Path("/usr/bin/mmseqs")),
+    )
+
+    def _fake_run_tool(*_args, **kwargs):  # type: ignore[no-untyped-def]
+        captured["kwargs"] = kwargs
+        cluster_tsv = output_prefix.with_name(f"{output_prefix.name}_cluster.tsv")
+        cluster_tsv.write_text("seq1\tseq1\n", encoding="utf-8")
+        return subprocess.CompletedProcess(args=["mmseqs"], returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr("nevelib.clustering.mmseqs.run_tool", _fake_run_tool)
+
+    run_mmseqs_linclust(
+        input_fasta=fasta,
+        output_prefix=output_prefix,
+        tmp_dir=tmp_dir,
+        cfg=MmseqsConfig(),
+        err_log=err_log,
+        logger=logger,
+    )
+
+    assert captured["kwargs"]["err_log"] == err_log
+    assert captured["kwargs"]["logger"] is logger
 
 
 def test_parse_mmseqs_clusters_deterministic_ids(tmp_path: Path) -> None:

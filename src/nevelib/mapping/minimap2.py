@@ -70,6 +70,7 @@ def run_minimap2(
     *,
     out_log: Path | None = None,
     err_log: Path | None = None,
+    logger: logging.Logger | None = None,
 ) -> Path:
     """Run minimap2 and write output alignments to the provided file.
 
@@ -80,6 +81,7 @@ def run_minimap2(
         cfg: Minimap2 execution settings.
         out_log: Optional path receiving raw minimap2 stdout.
         err_log: Optional path receiving minimap2 stderr.
+        logger: Optional logger receiving subprocess lifecycle messages.
 
     Returns:
         Output path.
@@ -119,7 +121,7 @@ def run_minimap2(
     LOGGER.debug("Running minimap2 command: %s", " ".join(cmd))
 
     try:
-        proc = run_tool(cmd, err_log=err_log, check=True)
+        proc = run_tool(cmd, err_log=err_log, check=True, logger=logger)
     except subprocess.CalledProcessError as exc:
         err_text = _extract_error_text(exc, err_log)
         msg = f"minimap2 failed with exit code {exc.returncode}"

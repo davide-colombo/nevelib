@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import logging
 from pathlib import Path
 
 from nevelib._common.blast_db import validate_blast_db
@@ -105,6 +106,7 @@ def run_blastn(
     *,
     out_log: Path | None = None,
     err_log: Path | None = None,
+    logger: logging.Logger | None = None,
 ) -> Path:
     """Run blastn and write tabular results to output path."""
     cfg_local = BlastConfig(**{**cfg.__dict__, "blast_exec": cfg.blast_exec or "blastn"})
@@ -119,7 +121,7 @@ def run_blastn(
 
     output.parent.mkdir(parents=True, exist_ok=True)
     cmd = _build_blast_command(query, output, cfg_local)
-    run_tool(cmd, out_log=out_log, err_log=err_log, check=True)
+    run_tool(cmd, out_log=out_log, err_log=err_log, check=True, logger=logger)
 
     if not output.exists():
         raise RuntimeError(f"BLAST output file was not created: {output}")
@@ -133,6 +135,7 @@ def run_blastx(
     *,
     out_log: Path | None = None,
     err_log: Path | None = None,
+    logger: logging.Logger | None = None,
 ) -> Path:
     """Run blastx and write tabular results to output path."""
     cfg_local = BlastConfig(**{**cfg.__dict__, "blast_exec": "blastx"})
@@ -145,7 +148,7 @@ def run_blastx(
 
     output.parent.mkdir(parents=True, exist_ok=True)
     cmd = _build_blast_command(query, output, cfg_local)
-    run_tool(cmd, out_log=out_log, err_log=err_log, check=True)
+    run_tool(cmd, out_log=out_log, err_log=err_log, check=True, logger=logger)
 
     if not output.exists():
         raise RuntimeError(f"BLAST output file was not created: {output}")
@@ -160,6 +163,7 @@ def run_makeblastdb(
     db_type: str = "nucl",
     out_log: Path | None = None,
     err_log: Path | None = None,
+    logger: logging.Logger | None = None,
 ) -> Path:
     """Run makeblastdb and return the generated database prefix path."""
     fasta_result = validate_fasta(input_fasta, check_nonempty=True, min_records=1)
@@ -180,5 +184,5 @@ def run_makeblastdb(
         "-out",
         str(db_prefix),
     ]
-    run_tool(cmd, out_log=out_log, err_log=err_log, check=True)
+    run_tool(cmd, out_log=out_log, err_log=err_log, check=True, logger=logger)
     return db_prefix
