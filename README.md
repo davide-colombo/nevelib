@@ -73,3 +73,9 @@ Each module wraps standard bioinformatics tools that must be available on `PATH`
 ## License
 
 MIT
+
+## Agent configuration
+
+Repository agent guidance is in `AGENTS.md`. Generated Codex and Claude Code skills,
+their pinned manifest, validation, and the optional local-overlay convention are
+documented in [`docs/agent-configuration.md`](docs/agent-configuration.md).

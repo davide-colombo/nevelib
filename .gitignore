@@ -18,3 +18,5 @@ env/
 *~
 .DS_Store
 .shuttle.conf
+.agents-local/PROJECT_PROFILE.local.md
+.nevelib-agent-sync/

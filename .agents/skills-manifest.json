@@ -1,0 +1,220 @@
+{
+  "canonical_repository": "agentic-engineering-skills",
+  "canonical_repository_identity": "github.com/davide-colombo/agentic-engineering-skills",
+  "canonical_source_commit": "4127caf3393e929979ec2782abd0fb3007b64794",
+  "excluded_not_relevant_skills": {
+    "excel-workbook-integrity": {
+      "classification": "DO_NOT_INSTALL",
+      "invocation_policy": "NOT_APPLICABLE"
+    },
+    "manual-curation-artifact-packaging": {
+      "classification": "DO_NOT_INSTALL",
+      "invocation_policy": "NOT_APPLICABLE"
+    }
+  },
+  "excluded_operational_skills": {
+    "data-transfer-and-integrity": {
+      "classification": "DO_NOT_INSTALL",
+      "invocation_policy": "EXPLICIT_ONLY"
+    },
+    "failure-recovery-and-rerun-planning": {
+      "classification": "DO_NOT_INSTALL",
+      "invocation_policy": "EXPLICIT_ONLY"
+    },
+    "git-integration-and-release-workflow": {
+      "classification": "DO_NOT_INSTALL",
+      "invocation_policy": "EXPLICIT_ONLY"
+    },
+    "large-output-root-hygiene": {
+      "classification": "DO_NOT_INSTALL",
+      "invocation_policy": "EXPLICIT_ONLY"
+    },
+    "production-run-launch-and-monitoring": {
+      "classification": "DO_NOT_INSTALL",
+      "invocation_policy": "EXPLICIT_ONLY"
+    },
+    "remote-execution-safety": {
+      "classification": "DO_NOT_INSTALL",
+      "invocation_policy": "EXPLICIT_ONLY"
+    }
+  },
+  "generated_skills": {
+    "agent-output-verification-and-claim-audit": {
+      "canonical_source_path": "skills/agent-output-verification-and-claim-audit",
+      "claude_destination": ".claude/skills/agent-output-verification-and-claim-audit",
+      "codex_destination": ".agents/skills/agent-output-verification-and-claim-audit",
+      "sha256": "1e6080d144ef697e0b9a3bfbae82d1cf87e259b9fe4fe0e4032a38da9ac7f052"
+    },
+    "bioinformatics-sequence-output-audit": {
+      "canonical_source_path": "skills/bioinformatics-sequence-output-audit",
+      "claude_destination": ".claude/skills/bioinformatics-sequence-output-audit",
+      "codex_destination": ".agents/skills/bioinformatics-sequence-output-audit",
+      "sha256": "63d74cc983949314026539da617d7fac886f7d2426d40cf510bc84aa48383708"
+    },
+    "classification-and-grouping-audit": {
+      "canonical_source_path": "skills/classification-and-grouping-audit",
+      "claude_destination": ".claude/skills/classification-and-grouping-audit",
+      "codex_destination": ".agents/skills/classification-and-grouping-audit",
+      "sha256": "9559864a0df72dda9f2f87fc36100c406e1778f50485a4b09fdc219a420c8445"
+    },
+    "code-review-and-test-audit": {
+      "canonical_source_path": "skills/code-review-and-test-audit",
+      "claude_destination": ".claude/skills/code-review-and-test-audit",
+      "codex_destination": ".agents/skills/code-review-and-test-audit",
+      "sha256": "ca3d3553986da12423cbfd0027ce8c803c5af4d8a3c83f62896f5b187190c3d6"
+    },
+    "configuration-and-environment-integrity": {
+      "canonical_source_path": "skills/configuration-and-environment-integrity",
+      "claude_destination": ".claude/skills/configuration-and-environment-integrity",
+      "codex_destination": ".agents/skills/configuration-and-environment-integrity",
+      "sha256": "e1e57499f718d2b369403d300091cf707004cef04133fa2b08380ca56492a53f"
+    },
+    "evidence-citation-discipline": {
+      "canonical_source_path": "skills/evidence-citation-discipline",
+      "claude_destination": ".claude/skills/evidence-citation-discipline",
+      "codex_destination": ".agents/skills/evidence-citation-discipline",
+      "sha256": "9324cc690d75c52f397a0ee634f1c9d5e7c3426a2e9b15b4e2a086f78f48752e"
+    },
+    "minimal-diff-implementation-discipline": {
+      "canonical_source_path": "skills/minimal-diff-implementation-discipline",
+      "claude_destination": ".claude/skills/minimal-diff-implementation-discipline",
+      "codex_destination": ".agents/skills/minimal-diff-implementation-discipline",
+      "sha256": "4f880f1643d999acf2482f943c30f92aa11b3c2037ada2941bfa7d3ad52571d8"
+    },
+    "output-contract-and-table-schema-audit": {
+      "canonical_source_path": "skills/output-contract-and-table-schema-audit",
+      "claude_destination": ".claude/skills/output-contract-and-table-schema-audit",
+      "codex_destination": ".agents/skills/output-contract-and-table-schema-audit",
+      "sha256": "f1fd77725474bcb06eb2084ef418bf692a4fe0053e08f1859e0f300d4c2601f2"
+    },
+    "read-only-audit-protocol": {
+      "canonical_source_path": "skills/read-only-audit-protocol",
+      "claude_destination": ".claude/skills/read-only-audit-protocol",
+      "codex_destination": ".agents/skills/read-only-audit-protocol",
+      "sha256": "35f8d8af4f4e8640814e48bc9060ea402007b115a7849e76a66527a23cacb6cc"
+    },
+    "repo-state-audit": {
+      "canonical_source_path": "skills/repo-state-audit",
+      "claude_destination": ".claude/skills/repo-state-audit",
+      "codex_destination": ".agents/skills/repo-state-audit",
+      "sha256": "e3fde76f61af8a10f8ca8398258ca5336b9b865913bc6b6073be687264891f70"
+    },
+    "scientific-data-integrity-audit": {
+      "canonical_source_path": "skills/scientific-data-integrity-audit",
+      "claude_destination": ".claude/skills/scientific-data-integrity-audit",
+      "codex_destination": ".agents/skills/scientific-data-integrity-audit",
+      "sha256": "652871a12e5a26b4869bb3a693c7e87c3ee87eb7f4e479df03f331eb139988dd"
+    },
+    "test-fixture-and-regression-design": {
+      "canonical_source_path": "skills/test-fixture-and-regression-design",
+      "claude_destination": ".claude/skills/test-fixture-and-regression-design",
+      "codex_destination": ".agents/skills/test-fixture-and-regression-design",
+      "sha256": "b55eb7d573c8c0f8c4661540558cf55dd79f575186cbc98beebdaab6d27e771b"
+    },
+    "token-efficient-repository-inspection": {
+      "canonical_source_path": "skills/token-efficient-repository-inspection",
+      "claude_destination": ".claude/skills/token-efficient-repository-inspection",
+      "codex_destination": ".agents/skills/token-efficient-repository-inspection",
+      "sha256": "3f43d6c44d390258c9fc844a770bd6ee170fee525ac52309111ad27b8df7a03f"
+    }
+  },
+  "optional_uninstalled_skills": {
+    "cross-session-handoff-and-continuity": {
+      "classification": "OPTIONAL_ON_DEMAND",
+      "invocation_policy": "EXPLICIT_ONLY"
+    },
+    "hardware-aware-parallelism": {
+      "classification": "OPTIONAL_ON_DEMAND",
+      "invocation_policy": "CONDITIONAL_BY_PROJECT"
+    },
+    "manifest-checksum-and-provenance": {
+      "classification": "OPTIONAL_ON_DEMAND",
+      "invocation_policy": "CONDITIONAL_BY_PROJECT"
+    },
+    "pipeline-stage-contract-audit": {
+      "classification": "OPTIONAL_ON_DEMAND",
+      "invocation_policy": "CONDITIONAL_BY_PROJECT"
+    },
+    "prompt-crafting-for-coding-agents": {
+      "classification": "OPTIONAL_ON_DEMAND",
+      "invocation_policy": "EXPLICIT_ONLY"
+    },
+    "resumable-pipeline-design": {
+      "classification": "OPTIONAL_ON_DEMAND",
+      "invocation_policy": "CONDITIONAL_BY_PROJECT"
+    },
+    "task-dossier-lifecycle": {
+      "classification": "OPTIONAL_ON_DEMAND",
+      "invocation_policy": "EXPLICIT_ONLY"
+    }
+  },
+  "schema_version": 2,
+  "skills": {
+    "agent-output-verification-and-claim-audit": {
+      "classification": "DEFAULT_DISCOVERABLE",
+      "invocation_policy": "ALLOW_IMPLICIT",
+      "private_binding_may_be_required": false
+    },
+    "bioinformatics-sequence-output-audit": {
+      "classification": "DEFAULT_DISCOVERABLE",
+      "invocation_policy": "ALLOW_IMPLICIT",
+      "private_binding_may_be_required": false
+    },
+    "classification-and-grouping-audit": {
+      "classification": "DEFAULT_DISCOVERABLE",
+      "invocation_policy": "ALLOW_IMPLICIT",
+      "private_binding_may_be_required": false
+    },
+    "code-review-and-test-audit": {
+      "classification": "DEFAULT_DISCOVERABLE",
+      "invocation_policy": "ALLOW_IMPLICIT",
+      "private_binding_may_be_required": false
+    },
+    "configuration-and-environment-integrity": {
+      "classification": "DEFAULT_DISCOVERABLE",
+      "invocation_policy": "ALLOW_IMPLICIT",
+      "private_binding_may_be_required": true
+    },
+    "evidence-citation-discipline": {
+      "classification": "DEFAULT_DISCOVERABLE",
+      "invocation_policy": "ALLOW_IMPLICIT",
+      "private_binding_may_be_required": false
+    },
+    "minimal-diff-implementation-discipline": {
+      "classification": "DEFAULT_DISCOVERABLE",
+      "invocation_policy": "ALLOW_IMPLICIT",
+      "private_binding_may_be_required": false
+    },
+    "output-contract-and-table-schema-audit": {
+      "classification": "DEFAULT_DISCOVERABLE",
+      "invocation_policy": "ALLOW_IMPLICIT",
+      "private_binding_may_be_required": false
+    },
+    "read-only-audit-protocol": {
+      "classification": "DEFAULT_DISCOVERABLE",
+      "invocation_policy": "ALLOW_IMPLICIT",
+      "private_binding_may_be_required": false
+    },
+    "repo-state-audit": {
+      "classification": "DEFAULT_DISCOVERABLE",
+      "invocation_policy": "ALLOW_IMPLICIT",
+      "private_binding_may_be_required": false
+    },
+    "scientific-data-integrity-audit": {
+      "classification": "DEFAULT_DISCOVERABLE",
+      "invocation_policy": "ALLOW_IMPLICIT",
+      "private_binding_may_be_required": false
+    },
+    "test-fixture-and-regression-design": {
+      "classification": "DEFAULT_DISCOVERABLE",
+      "invocation_policy": "ALLOW_IMPLICIT",
+      "private_binding_may_be_required": false
+    },
+    "token-efficient-repository-inspection": {
+      "classification": "DEFAULT_DISCOVERABLE",
+      "invocation_policy": "ALLOW_IMPLICIT",
+      "private_binding_may_be_required": false
+    }
+  },
+  "update_policy": "Run sync only with an explicit source and an exact matching canonical commit; generated trees are replaced, never manually merged."
+}

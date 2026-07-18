@@ -1,0 +1,12 @@
+# Local overlay (example only)
+
+- Repository path: `<LOCAL_REPOSITORY_PATH>`
+- Preferred environment: `<LOCAL_ENVIRONMENT>`
+- Environment executable: `<LOCAL_PYTHON_EXECUTABLE>`
+- External tool paths: `<LOCAL_TOOL_PATHS>`
+- Scratch root: `<LOCAL_SCRATCH_ROOT>`
+- Resource limits: `<LOCAL_RESOURCE_LIMITS>`
+- Sibling application checkout: `<SIBLING_APPLICATION_CHECKOUT>`
+- Private compatibility-test paths: `<PRIVATE_COMPATIBILITY_TEST_PATHS>`
+
+This file is a placeholder. The populated local overlay is ignored and optional.
