@@ -318,16 +318,22 @@ def filter_hits(
         df = df[pd.to_numeric(df["bitscore"], errors="coerce") >= float(min_bitscore)]
 
     if min_qcov is not None:
-        for candidate in ("qcov", "qcovhsp", "qcovs"):
-            if candidate in df.columns:
-                df = df[pd.to_numeric(df[candidate], errors="coerce") >= float(min_qcov)]
-                break
+        candidates = ("qcov", "qcovhsp", "qcovs")
+        candidate = next((name for name in candidates if name in df.columns), None)
+        if candidate is None:
+            raise ValueError(
+                "min_qcov requires one of DataFrame columns: " + ", ".join(candidates)
+            )
+        df = df[pd.to_numeric(df[candidate], errors="coerce") >= float(min_qcov)]
 
     if min_scov is not None:
-        for candidate in ("scov", "scovhsp", "scovs"):
-            if candidate in df.columns:
-                df = df[pd.to_numeric(df[candidate], errors="coerce") >= float(min_scov)]
-                break
+        candidates = ("scov", "scovhsp", "scovs")
+        candidate = next((name for name in candidates if name in df.columns), None)
+        if candidate is None:
+            raise ValueError(
+                "min_scov requires one of DataFrame columns: " + ", ".join(candidates)
+            )
+        df = df[pd.to_numeric(df[candidate], errors="coerce") >= float(min_scov)]
 
     return df
 

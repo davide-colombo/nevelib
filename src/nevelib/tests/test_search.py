@@ -370,6 +370,57 @@ def test_filter_hits_by_evalue(tmp_path: Path) -> None:
     assert len(filtered) == 1
 
 
+@pytest.mark.parametrize(
+    ("threshold", "message"),
+    [
+        ({"min_qcov": 90.0}, "min_qcov requires one of DataFrame columns"),
+        ({"min_scov": 90.0}, "min_scov requires one of DataFrame columns"),
+    ],
+)
+def test_filter_hits_dataframe_requires_requested_coverage_evidence(
+    tmp_path: Path,
+    threshold: dict[str, float],
+    message: str,
+) -> None:
+    """Parsed BLAST tables cannot satisfy an unrepresented coverage threshold."""
+    path = tmp_path / "hits.tsv"
+    _write_hits_file(
+        path,
+        ["q1\ts1\t99.0\t100\t0\t0\t1\t100\t5\t104\t1e-30\t200\t100\t1000"],
+    )
+    df = parse_blast_to_dataframe(path)
+
+    with pytest.raises(ValueError, match=message):
+        filter_hits(df, **threshold)
+
+
+@pytest.mark.parametrize(
+    ("coverage_column", "threshold"),
+    [
+        ("qcovhsp", {"min_qcov": 90.0}),
+        ("scovs", {"min_scov": 90.0}),
+    ],
+)
+def test_filter_hits_dataframe_applies_available_coverage_evidence(
+    coverage_column: str,
+    threshold: dict[str, float],
+) -> None:
+    """Recognized coverage aliases filter rows and preserve the DataFrame schema."""
+    df = pd.DataFrame(
+        [
+            {"qseqid": "pass", coverage_column: 95.0},
+            {"qseqid": "fail", coverage_column: 89.9},
+            {"qseqid": "missing", coverage_column: None},
+        ]
+    )
+
+    filtered = filter_hits(df, **threshold)
+
+    assert isinstance(filtered, pd.DataFrame)
+    assert list(filtered.columns) == ["qseqid", coverage_column]
+    assert filtered["qseqid"].tolist() == ["pass"]
+
+
 def test_filter_hits_multiple_criteria(tmp_path: Path) -> None:
     """filter_hits supports multiple threshold criteria simultaneously."""
     path = tmp_path / "hits.tsv"

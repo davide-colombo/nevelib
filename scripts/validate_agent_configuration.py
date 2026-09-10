@@ -29,6 +29,7 @@ Both PASS_* states exit 0; FAIL exits 1.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import stat
@@ -83,8 +84,9 @@ _REQUIRED_FILES = (
 _FORBIDDEN_EXACT = {
     ".codex/config.toml", ".codex/hooks.json", ".mcp.json", ".codex/mcp.json",
 }
+_ALLOWED_PROJECT_RULES = {".codex/rules/repository-safety.rules"}
 _FORBIDDEN_PREFIXES = (
-    ".codex/agents", ".codex/rules", ".codex/hooks",
+    ".codex/agents", ".codex/hooks",
     ".githooks", ".agents/rules", ".claude/agents",
 )
 
@@ -147,6 +149,104 @@ def _publishable_surface() -> tuple[set[str], set[str]]:
     return tracked, untracked
 
 
+def _literal_string_tree(value: object) -> bool:
+    if isinstance(value, str):
+        return bool(value)
+    return isinstance(value, list) and bool(value) and all(
+        _literal_string_tree(item) for item in value
+    )
+
+
+def _check_repository_safety_rule(path: Path) -> list[str]:
+    errors: list[str] = []
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, UnicodeDecodeError, SyntaxError) as exc:
+        return [f"invalid repository safety rule: {exc}"]
+
+    valid_rules = 0
+    allowed_keywords = {"pattern", "decision", "justification", "match", "not_match"}
+    required_keywords = {"pattern", "decision", "justification"}
+    for statement in tree.body:
+        if not (
+            isinstance(statement, ast.Expr)
+            and isinstance(statement.value, ast.Call)
+            and isinstance(statement.value.func, ast.Name)
+            and statement.value.func.id == "prefix_rule"
+        ):
+            errors.append(
+                f"repository safety rule line {statement.lineno}: "
+                "only literal prefix_rule calls are permitted"
+            )
+            continue
+
+        call = statement.value
+        if call.args or any(keyword.arg is None for keyword in call.keywords):
+            errors.append(
+                f"repository safety rule line {statement.lineno}: "
+                "positional and expanded arguments are prohibited"
+            )
+            continue
+        names = [keyword.arg for keyword in call.keywords]
+        if len(names) != len(set(names)):
+            errors.append(f"repository safety rule line {statement.lineno}: duplicate keyword")
+            continue
+        if set(names) - allowed_keywords or required_keywords - set(names):
+            errors.append(
+                f"repository safety rule line {statement.lineno}: "
+                "unexpected or missing keyword"
+            )
+            continue
+        try:
+            values = {
+                keyword.arg: ast.literal_eval(keyword.value) for keyword in call.keywords
+            }
+        except (ValueError, TypeError):
+            errors.append(
+                f"repository safety rule line {statement.lineno}: all values must be literal"
+            )
+            continue
+        if not isinstance(values["pattern"], list) or not _literal_string_tree(values["pattern"]):
+            errors.append(
+                f"repository safety rule line {statement.lineno}: pattern must be a "
+                "non-empty literal string list"
+            )
+            continue
+        if not isinstance(values["decision"], str) or values["decision"] not in {
+            "prompt", "forbidden",
+        }:
+            errors.append(
+                f"repository safety rule line {statement.lineno}: decision must be "
+                "literal 'prompt' or 'forbidden'"
+            )
+            continue
+        if not isinstance(values["justification"], str) or not values["justification"]:
+            errors.append(
+                f"repository safety rule line {statement.lineno}: justification must be "
+                "a non-empty literal string"
+            )
+            continue
+        if any(
+            name in values
+            and (
+                not isinstance(values[name], list)
+                or not values[name]
+                or not all(isinstance(item, str) and item for item in values[name])
+            )
+            for name in ("match", "not_match")
+        ):
+            errors.append(
+                f"repository safety rule line {statement.lineno}: match examples must be "
+                "non-empty literal string lists"
+            )
+            continue
+        valid_rules += 1
+
+    if not valid_rules:
+        errors.append("repository safety rule must define at least one valid prefix_rule")
+    return errors
+
+
 def _check_forbidden_project_config(tracked: set[str], untracked: set[str]) -> list[str]:
     errors: list[str] = []
     for rel in sorted(tracked | untracked):
@@ -154,6 +254,13 @@ def _check_forbidden_project_config(tracked: set[str], untracked: set[str]) -> l
             errors.append(f"prohibited project automation file is present: {rel}")
             continue
         rel_path = Path(rel)
+        rules_path = Path(".codex/rules")
+        if rel_path == rules_path or rel_path.is_relative_to(rules_path):
+            if rel not in _ALLOWED_PROJECT_RULES:
+                errors.append(f"prohibited project automation path is present: {rel}")
+            else:
+                errors.extend(_check_repository_safety_rule(ROOT / rel))
+            continue
         for prefix in _FORBIDDEN_PREFIXES:
             prefix_path = Path(prefix)
             if rel_path == prefix_path or rel_path.is_relative_to(prefix_path):

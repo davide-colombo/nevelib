@@ -1,0 +1,242 @@
+# repository-safety.rules
+# Additive project rules for nevelib. These rules contain no permissive decisions.
+# Codex loads project rules only for a trusted project and may require a restart
+# after installation. Check decisions without executing commands with:
+#   codex execpolicy check --pretty --rules .codex/rules/repository-safety.rules -- <command>
+
+prefix_rule(
+    pattern = ["repository-rules-probe"],
+    decision = "forbidden",
+    justification = "Probe OK: repository-safety.rules is loaded.",
+    match = ["repository-rules-probe"],
+)
+
+# Deletion, destructive storage operations, links, and process intervention.
+prefix_rule(
+    pattern = [["rm", "rmdir", "unlink", "shred", "srm", "trash"]],
+    decision = "forbidden",
+    justification = "File deletion requires an explicitly reviewed repository operation.",
+    match = ["rm -rf build", "rmdir output", "unlink result.tsv"],
+)
+
+prefix_rule(
+    pattern = [["sudo", "dd", "truncate", "diskutil"]],
+    decision = "forbidden",
+    justification = "Administrator and raw-storage commands are outside routine repository work.",
+    match = ["sudo ls", "dd if=/dev/zero of=file", "truncate -s 0 file"],
+)
+
+prefix_rule(
+    pattern = ["ln"],
+    decision = "forbidden",
+    justification = "Links can escape repository ownership and change source files indirectly.",
+    match = ["ln source target", "ln -s source target"],
+)
+
+prefix_rule(
+    pattern = ["cp", ["-l", "--link"]],
+    decision = "forbidden",
+    justification = "Hard-link copies can change the source through the destination.",
+    match = ["cp -l source target", "cp --link source target"],
+)
+
+prefix_rule(
+    pattern = [["kill", "killall", "pkill"]],
+    decision = "prompt",
+    justification = "Process intervention requires explicit authorization and verified identity.",
+    match = ["kill 1234", "pkill worker", "killall python"],
+)
+
+# Git forms that can obscure the subcommand or discard data.
+prefix_rule(
+    pattern = ["git", ["-C", "-c", "--git-dir", "--work-tree"]],
+    decision = "forbidden",
+    justification = "Run Git in the selected repository without command-level configuration overrides.",
+    match = ["git -C /tmp/repository status", "git -c gc.auto=0 status"],
+    not_match = ["git status", "git log --oneline"],
+)
+
+prefix_rule(
+    pattern = ["git", "clean"],
+    decision = "forbidden",
+    justification = "git clean deletes untracked files.",
+    match = ["git clean -fdx", "git clean -n"],
+)
+
+prefix_rule(
+    pattern = ["git", "reset", "--hard"],
+    decision = "forbidden",
+    justification = "git reset --hard discards worktree and index changes.",
+    match = ["git reset --hard HEAD"],
+)
+
+prefix_rule(
+    pattern = ["git", "checkout", ["--", "-f", "--force", "."]],
+    decision = "forbidden",
+    justification = "This checkout form can discard local modifications.",
+    match = ["git checkout -- file", "git checkout -f main", "git checkout ."],
+)
+
+prefix_rule(
+    pattern = ["git", "switch", ["-f", "--force", "--discard-changes"]],
+    decision = "forbidden",
+    justification = "Forced branch switches can discard local modifications.",
+    match = ["git switch -f main", "git switch --discard-changes main"],
+)
+
+prefix_rule(
+    pattern = ["git", "stash", ["drop", "clear"]],
+    decision = "forbidden",
+    justification = "Dropping stashes deletes saved recovery state.",
+    match = ["git stash drop", "git stash clear"],
+)
+
+prefix_rule(
+    pattern = ["git", ["branch", "tag"], ["-D", "-d", "--delete"]],
+    decision = "forbidden",
+    justification = "Deleting branches or tags requires an explicitly reviewed operation.",
+    match = ["git branch -D old", "git tag --delete old"],
+)
+
+prefix_rule(
+    pattern = ["git", "worktree", ["remove", "prune"]],
+    decision = "forbidden",
+    justification = "Removing or pruning worktrees deletes files or administrative state.",
+    match = ["git worktree remove ../worktree", "git worktree prune"],
+)
+
+prefix_rule(
+    pattern = ["git", ["gc", "prune", "repack"]],
+    decision = "forbidden",
+    justification = "Garbage collection and pruning can delete recovery objects.",
+    match = ["git gc --prune=now", "git prune", "git repack -a -d"],
+)
+
+prefix_rule(
+    pattern = ["git", "reflog", ["expire", "delete"]],
+    decision = "forbidden",
+    justification = "Reflog entries are recovery evidence.",
+    match = ["git reflog expire --expire=now --all", "git reflog delete HEAD@{0}"],
+)
+
+prefix_rule(
+    pattern = ["git", "update-ref", "-d"],
+    decision = "forbidden",
+    justification = "Deleting refs requires an explicitly reviewed operation.",
+    match = ["git update-ref -d refs/heads/old"],
+)
+
+prefix_rule(
+    pattern = ["git", "lfs", "prune"],
+    decision = "forbidden",
+    justification = "git lfs prune deletes local objects.",
+    match = ["git lfs prune"],
+)
+
+prefix_rule(
+    pattern = ["git", "filter-branch"],
+    decision = "forbidden",
+    justification = "History rewriting is never routine repository work.",
+    match = ["git filter-branch --msg-filter cat -- --all"],
+)
+
+prefix_rule(
+    pattern = ["git", ["filter-repo", "rebase", "rm", "restore"]],
+    decision = "prompt",
+    justification = "History rewriting, rebasing, removal, and restore operations require explicit review.",
+    match = ["git filter-repo --message-callback x", "git rebase -i HEAD~3", "git rm file", "git restore file"],
+)
+
+# Git state changes and remote writes.
+prefix_rule(
+    pattern = ["git", "fetch", ["--prune", "-p", "--prune-tags", "-P"]],
+    decision = "forbidden",
+    justification = "Pruning fetches delete local refs.",
+    match = ["git fetch --prune origin", "git fetch -p"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", ["--force", "-f", "--force-with-lease", "--force-if-includes", "--mirror", "--delete", "-d", "--prune"]],
+    decision = "forbidden",
+    justification = "Force and destructive pushes require direct owner execution after review.",
+    match = ["git push --force origin main", "git push --delete origin old", "git push --mirror origin"],
+)
+
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "prompt",
+    justification = "A push writes external repository state and requires explicit authorization.",
+    match = ["git push origin main", "git push --tags"],
+)
+
+prefix_rule(
+    pattern = ["git", ["add", "commit", "merge", "cherry-pick", "tag"]],
+    decision = "prompt",
+    justification = "Changing Git index, history, or tags requires explicit authorization for the current task.",
+    match = ["git add file", "git commit -m message", "git merge topic", "git cherry-pick HEAD~1", "git tag v1.0.0"],
+)
+
+prefix_rule(
+    pattern = ["gh", ["release", "repo", "pr", "api", "workflow", "secret"]],
+    decision = "prompt",
+    justification = "Repository-hosting actions can write external state.",
+    match = ["gh release create v1.0.0", "gh pr create", "gh api repos/example/project"],
+)
+
+# Remote access and data transfer.
+prefix_rule(
+    pattern = [["ssh", "scp", "sftp", "rsync", "shuttle"]],
+    decision = "prompt",
+    justification = "Remote access and data transfer require explicit authorization.",
+    match = ["ssh host", "scp file host:path", "rsync -av source destination"],
+)
+
+# Package and environment mutation.
+prefix_rule(
+    pattern = ["pip", ["uninstall", "cache"]],
+    decision = "forbidden",
+    justification = "Removing packages or package caches is outside routine repository work.",
+    match = ["pip uninstall package", "pip cache purge"],
+)
+
+prefix_rule(
+    pattern = ["pip", ["install", "download", "wheel"]],
+    decision = "prompt",
+    justification = "Package installation or acquisition requires explicit authorization.",
+    match = ["pip install package", "pip download package", "pip wheel package"],
+)
+
+prefix_rule(
+    pattern = [["python", "python3"], "-m", "pip", ["uninstall", "cache"]],
+    decision = "forbidden",
+    justification = "Removing packages or package caches is outside routine repository work.",
+    match = ["python3 -m pip uninstall package", "python -m pip cache purge"],
+)
+
+prefix_rule(
+    pattern = [["python", "python3"], "-m", "pip", ["install", "download", "wheel"]],
+    decision = "prompt",
+    justification = "Package installation or acquisition requires explicit authorization.",
+    match = ["python3 -m pip install package", "python -m pip download package"],
+)
+
+prefix_rule(
+    pattern = [["conda", "mamba", "micromamba"], ["remove", "uninstall", "clean"]],
+    decision = "forbidden",
+    justification = "Removing environments, packages, or caches is outside routine repository work.",
+    match = ["conda remove package", "mamba clean --all"],
+)
+
+prefix_rule(
+    pattern = [["conda", "mamba", "micromamba"], "env", "remove"],
+    decision = "forbidden",
+    justification = "Deleting environments is outside routine repository work.",
+    match = ["conda env remove -n environment"],
+)
+
+prefix_rule(
+    pattern = [["conda", "mamba", "micromamba"], ["install", "create", "update", "upgrade"]],
+    decision = "prompt",
+    justification = "Environment or package changes require explicit authorization.",
+    match = ["conda install package", "mamba create -n environment python"],
+)

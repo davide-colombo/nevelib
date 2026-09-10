@@ -28,6 +28,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SYNC_SCRIPT = REPO_ROOT / "scripts" / "sync_agent_skills.py"
 VALIDATE_SCRIPT = REPO_ROOT / "scripts" / "validate_agent_configuration.py"
+REPOSITORY_SAFETY_RULE = REPO_ROOT / ".codex" / "rules" / "repository-safety.rules"
 
 SKILLS = ("agent-output-verification-and-claim-audit", "code-review-and-test-audit")
 
@@ -1132,7 +1133,59 @@ def test_validate_hook_artifact_fails(tmp_path):
     assert "prohibited project automation path is present: .codex/hooks/pre-tool.sh" in result.stderr
 
 
-def test_validate_rule_artifact_fails(tmp_path):
+def test_validate_repository_safety_rule_is_permitted(tmp_path):
+    _, checkout = _make_full_policy_checkout(tmp_path)
+    rules_dir = checkout.path / ".codex" / "rules"
+    rules_dir.mkdir(parents=True)
+    (rules_dir / "repository-safety.rules").write_bytes(REPOSITORY_SAFETY_RULE.read_bytes())
+    result = checkout.run_validate()
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "PASS_LOCAL_STRUCTURE_SOURCE_PARITY_UNAVAILABLE"
+
+
+@pytest.mark.parametrize(
+    "contents",
+    ["", "# comment-only policy\n"],
+    ids=["empty", "comment-only"],
+)
+def test_validate_repository_safety_rule_requires_a_rule(tmp_path, contents):
+    _, checkout = _make_full_policy_checkout(tmp_path)
+    rules_dir = checkout.path / ".codex" / "rules"
+    rules_dir.mkdir(parents=True)
+    (rules_dir / "repository-safety.rules").write_text(contents)
+    result = checkout.run_validate()
+    assert result.returncode != 0
+    assert "repository safety rule must define at least one valid prefix_rule" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("decision", "message"),
+    [
+        ('"allow"', "decision must be literal 'prompt' or 'forbidden'"),
+        ("choose_decision()", "all values must be literal"),
+    ],
+    ids=["allow", "dynamic"],
+)
+def test_validate_repository_safety_rule_rejects_nonrestrictive_policy(
+    tmp_path, decision, message
+):
+    _, checkout = _make_full_policy_checkout(tmp_path)
+    rules_dir = checkout.path / ".codex" / "rules"
+    rules_dir.mkdir(parents=True)
+    (rules_dir / "repository-safety.rules").write_text(
+        "prefix_rule(\n"
+        "    pattern=[\"example-command\"],\n"
+        f"    decision={decision},\n"
+        "    justification=\"test policy\",\n"
+        "    match=[\"example-command\"],\n"
+        ")\n"
+    )
+    result = checkout.run_validate()
+    assert result.returncode != 0
+    assert message in result.stderr
+
+
+def test_validate_unexpected_rule_artifact_fails(tmp_path):
     canonical = make_canonical(tmp_path, SKILLS)
     checkout = make_checkout(tmp_path, canonical, SKILLS, pre_synced=True)
     rules_dir = checkout.path / ".codex" / "rules"

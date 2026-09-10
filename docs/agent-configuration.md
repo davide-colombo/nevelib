@@ -17,6 +17,23 @@ for structural and source-parity validation.
 `.agents-local/PROJECT_PROFILE.local.md` is optional and ignored. Copy the tracked
 example locally only when machine-specific bindings are needed; do not commit it.
 
+## Project rule boundary
+
+The only permitted project rule is `.codex/rules/repository-safety.rules`. It is an
+additive restriction surface: it contains `prompt` and `forbidden` decisions, never an
+`allow` decision. `scripts/validate_agent_configuration.py` rejects every other file
+under `.codex/rules`. For that exact file, it parses the policy without executing it,
+requires at least one literal `prefix_rule` call, accepts only literal `prompt` or
+`forbidden` decisions, and rejects empty, comment-only, dynamic, or otherwise executable
+policy content. Existing prohibitions on project configuration, hooks, agents, and MCP
+declarations remain in force. Test representative rule decisions with `codex execpolicy
+check` before relying on the file. Project trust and a Codex restart may be required
+before a newly installed rule is loaded.
+
+Long-running work follows the self-contained repository plan specification in
+`../PLANS.md`. It is intentionally separate from the generated skill inventory, so the
+manifest and generated Codex and Claude skill payloads remain unchanged.
+
 ## Canonical source cleanliness
 
 `--check --source` and `--sync` both require the canonical source's Git index and

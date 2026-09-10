@@ -372,11 +372,39 @@ def test_assemble_reads_counts_output_contigs(
     assert result.n_scaffolds == 1
 
 
-def test_assemble_reads_empty_output_creates_empty_scaffolds(
+def test_assemble_reads_uses_nonempty_contigs_when_scaffolds_are_missing(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Successful SPAdes run with no outputs creates empty scaffolds.fasta."""
+    """A valid contigs artifact remains the documented scaffold fallback."""
+    r1 = tmp_path / "R1.fastq.gz"
+    r2 = tmp_path / "R2.fastq.gz"
+    outdir = tmp_path / "spades"
+    _write_fastq(r1, [("a/1", "ACGT", "IIII")])
+    _write_fastq(r2, [("a/2", "TGCA", "IIII")])
+
+    def _fake_run_tool(cmd, **_kwargs):
+        _write_fasta(outdir / "contigs.fasta", [("c1", "ACGT")])
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(
+        "nevelib.assembly.assemble.check_tool",
+        lambda *_a, **_k: ToolInfo(name="spades.py", available=True, path=Path("/usr/bin/spades.py")),
+    )
+    monkeypatch.setattr("nevelib.assembly.assemble.run_tool", _fake_run_tool)
+
+    result = assemble_reads(r1, r2, None, outdir, AssemblyConfig())
+
+    assert result.n_contigs == 1
+    assert result.n_scaffolds == 1
+    assert result.scaffolds.read_text(encoding="utf-8") == result.contigs.read_text(encoding="utf-8")
+
+
+def test_assemble_reads_rejects_missing_spades_outputs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A zero SPAdes exit without assembly artifacts is a tool failure."""
     r1 = tmp_path / "R1.fastq.gz"
     r2 = tmp_path / "R2.fastq.gz"
     outdir = tmp_path / "spades"
@@ -392,12 +420,8 @@ def test_assemble_reads_empty_output_creates_empty_scaffolds(
     )
     monkeypatch.setattr("nevelib.assembly.assemble.run_tool", _fake_run_tool)
 
-    result = assemble_reads(r1, r2, None, outdir, AssemblyConfig())
-
-    assert result.n_contigs == 0
-    assert result.n_scaffolds == 0
-    assert result.scaffolds.exists()
-    assert result.scaffolds.stat().st_size == 0
+    with pytest.raises(RuntimeError, match="SPAdes produced no non-empty outputs"):
+        assemble_reads(r1, r2, None, outdir, AssemblyConfig())
 
 
 # --- coverage.py ---
