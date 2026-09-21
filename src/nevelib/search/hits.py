@@ -605,14 +605,30 @@ def merge_blast_hits_to_regions(
 
     region_rows: list[dict[str, object]] = []
     region_assignments = pd.Series(index=work["__input_pos"], dtype="int64", name="region_id")
-
-    for region_id, (group_value, region_start, region_end, member_positions) in enumerate(committed_regions, start=1):
-        region_hits = work.loc[member_positions]
-        representative = region_hits.sort_values(
+    representative_ranks = None
+    if len(committed_regions) > 1 and work.columns.is_unique and all(
+        isinstance(work[column].dtype, np.dtype) and work[column].dtype.kind in "biuf"
+        for column in (representative_by, representative_tiebreak)
+    ):
+        ranked_positions = work.sort_values(
             by=[representative_by, representative_tiebreak, "__original_index"],
             ascending=[False, True, True],
             kind="mergesort",
-        ).iloc[0]
+        ).index.to_numpy()
+        representative_ranks = np.empty(len(work), dtype=np.intp)
+        representative_ranks[ranked_positions] = np.arange(len(work), dtype=np.intp)
+
+    for region_id, (group_value, region_start, region_end, member_positions) in enumerate(committed_regions, start=1):
+        if representative_ranks is None:
+            region_hits = work.loc[member_positions]
+            representative = region_hits.sort_values(
+                by=[representative_by, representative_tiebreak, "__original_index"],
+                ascending=[False, True, True],
+                kind="mergesort",
+            ).iloc[0]
+        else:
+            representative_position = min(member_positions, key=representative_ranks.__getitem__)
+            representative = work.loc[[representative_position]].iloc[0]
 
         region_row: dict[str, object] = {
             "region_id": region_id,

@@ -8,6 +8,105 @@ import pytest
 from nevelib.search.hits import merge_blast_hits_to_regions
 
 
+@pytest.mark.parametrize("scores,evalues,winner", [
+    ([10.0, 20.0], [0.1, 0.2], 1),
+    ([20.0, 20.0], [0.1, 0.2], 0),
+    ([20.0, 20.0], [0.1, 0.1], 1),
+    ([float("nan"), 20.0], [0.1, float("nan")], 1),
+    ([20.0, 20.0], [float("nan"), 0.2], 1),
+    ([float("nan"), float("nan")], [float("nan"), float("nan")], 1),
+    ([float("inf"), float("-inf")], [0.1, 0.1], 0),
+])
+def test_representative_ranking_preserves_missing_values_and_both_outputs(scores, evalues, winner):
+    frame = pd.DataFrame(dict(qseqid=["q1", "q1", "q2"], qstart=[10, 20, 1],
+                              qend=[35, 45, 5], bitscore=[*scores, 1.0],
+                              evalue=[*evalues, 0.5], tag=["first", "second", "other"]),
+                         index=[10, 5, 20])
+    original = frame.copy(deep=True)
+    regions, mapping = merge_blast_hits_to_regions(frame, payload_cols=["tag", "bitscore", "evalue"])
+    expected = pd.DataFrame([
+        [1, "q1", 10, 45, 36, 2, ("first", "second")[winner], scores[winner], evalues[winner]],
+        [2, "q2", 1, 5, 5, 1, "other", 1.0, 0.5],
+    ], columns=["region_id", "qseqid", "region_start", "region_end", "region_length",
+                "n_collapsed_hits", "tag", "bitscore", "evalue"])
+    pd.testing.assert_frame_equal(regions, expected)
+    pd.testing.assert_series_equal(mapping, pd.Series([1.0, 1.0, 2.0], index=frame.index, name="region_id"))
+    pd.testing.assert_frame_equal(frame, original)
+
+
+@pytest.mark.parametrize("index", [
+    pd.Index([7, 7, 9], name="hit"),
+    pd.Index(["z", "a", "b"], name="hit"),
+    pd.MultiIndex.from_tuples([("z", 2), ("a", 3), ("b", 1)], names=["batch", "hit"]),
+    pd.Index([float("nan"), 5, 9], name="hit"),
+])
+def test_complete_ranking_ties_keep_index_and_coordinate_order(index):
+    frame = pd.DataFrame(dict(qseqid=["q1", "q1", "q2"], qstart=[20, 10, 1],
+                              qend=[40, 30, 5], bitscore=[10, 10, 10],
+                              evalue=[0.1, 0.1, 0.1], tag=["late", "early", "other"]), index=index)
+    regions, mapping = merge_blast_hits_to_regions(frame, payload_cols=["tag"])
+    expected = pd.DataFrame([
+        [1, "q1", 10, 40, 31, 2, "early"], [2, "q2", 1, 5, 5, 1, "other"],
+    ], columns=["region_id", "qseqid", "region_start", "region_end", "region_length",
+                "n_collapsed_hits", "tag"])
+    pd.testing.assert_frame_equal(regions, expected)
+    pd.testing.assert_series_equal(mapping, pd.Series([1.0, 1.0, 2.0], index=index, name="region_id"))
+
+
+@pytest.mark.parametrize("payload", [
+    pd.array([2**60 + 1, 2, pd.NA], dtype="Int64"),
+    pd.array([True, False, pd.NA], dtype="boolean"),
+    pd.Categorical(["chosen", "lower", "other"], categories=["other", "lower", "chosen"], ordered=True),
+    pd.to_datetime(["2020-01-01", "2020-01-02", None]),
+])
+def test_representative_payload_preserves_extension_scalars(payload):
+    frame = pd.DataFrame(dict(qseqid=["q1", "q1", "q2"], qstart=[10, 20, 1],
+                              qend=[35, 45, 5], bitscore=[20.0, 10.0, 1.0],
+                              evalue=[0.1, 0.1, 0.1], payload=payload))
+    regions, mapping = merge_blast_hits_to_regions(frame, payload_cols=["payload"])
+    expected = pd.DataFrame([
+        [1, "q1", 10, 45, 36, 2, payload[0]], [2, "q2", 1, 5, 5, 1, payload[2]],
+    ], columns=["region_id", "qseqid", "region_start", "region_end", "region_length",
+                "n_collapsed_hits", "payload"])
+    pd.testing.assert_frame_equal(regions, expected)
+    pd.testing.assert_series_equal(mapping, pd.Series([1.0, 1.0, 2.0], name="region_id"))
+
+
+@pytest.mark.parametrize("scores", [
+    pd.array([2.0, pd.NA, 1.0], dtype="Float64"),
+    pd.Categorical(["high", "low", "low"], categories=["low", "high"], ordered=True),
+    pd.Series(["2", "1", "0"], dtype=object),
+])
+def test_non_numpy_ranking_dtypes_keep_their_existing_order(scores):
+    frame = pd.DataFrame(dict(qseqid=["q1", "q1", "q2"], qstart=[10, 20, 1],
+                              qend=[35, 45, 5], bitscore=scores, evalue=[0.1, 0.1, 0.1],
+                              tag=["chosen", "lower", "other"]))
+    regions, mapping = merge_blast_hits_to_regions(frame, payload_cols=["tag"])
+    assert regions["tag"].tolist() == ["chosen", "other"]
+    pd.testing.assert_series_equal(mapping, pd.Series([1.0, 1.0, 2.0], name="region_id"))
+
+
+def test_scores_in_separate_regions_need_not_be_mutually_orderable():
+    from datetime import date
+
+    frame = pd.DataFrame(dict(qseqid=["q1", "q2"], qstart=[1, 1], qend=[5, 5],
+                              bitscore=[date(2020, 1, 1), 1], evalue=[0.1, 0.1], tag=["date", "number"]))
+    regions, mapping = merge_blast_hits_to_regions(frame, payload_cols=["tag"])
+    assert regions["tag"].tolist() == ["date", "number"]
+    pd.testing.assert_series_equal(mapping, pd.Series([1.0, 2.0], name="region_id"))
+
+
+@pytest.mark.parametrize("all_missing", [False, True])
+def test_missing_groups_do_not_rank_unhashable_scores(all_missing):
+    frame = pd.DataFrame(dict(qseqid=[None if all_missing else "q1", None],
+                              qstart=[1, 1], qend=[5, 5], bitscore=[1, {}],
+                              evalue=[0.1, 0.1], tag=["kept", "ignored"]))
+    regions, mapping = merge_blast_hits_to_regions(frame, payload_cols=["tag"])
+    assert regions["tag"].tolist() == ([] if all_missing else ["kept"])
+    expected = [float("nan") if all_missing else 1.0, float("nan")]
+    pd.testing.assert_series_equal(mapping, pd.Series(expected, name="region_id"))
+
+
 BLAST_COLUMNS = [
     "qseqid",
     "qstart",
