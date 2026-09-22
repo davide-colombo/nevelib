@@ -13,14 +13,13 @@ from pathlib import Path
 from nevelib._common.config import load_config, merge_defaults, validate_required_keys
 from nevelib._common.fasta import validate_fasta
 from nevelib.mapping.minimap2 import Minimap2Config, run_minimap2
-from nevelib.mapping.paf import (
+from nevelib.mapping.alignment_selection import (
     alignment_identity,
     best_hit_per_query,
     filter_paf_records,
-    parse_paf,
-    parse_paf_by_query,
     query_coverage,
 )
+from nevelib.mapping.paf import parse_paf, parse_paf_by_query
 
 
 _DEFAULTS: dict = {
