@@ -15,7 +15,8 @@ from nevelib._common.config import load_config, merge_defaults, validate_require
 from nevelib._common.fasta import validate_fasta
 from nevelib.search.blast import BlastConfig, run_blastn, run_blastx
 from nevelib.search.classify import classify_hits_by_taxonomy
-from nevelib.search.hits import filter_hits, filter_hits_by_bitscore_fraction, parse_blast_to_dataframe
+from nevelib.search.hit_calculations import filter_hits, filter_hits_by_bitscore_fraction
+from nevelib.search.hits import parse_blast_to_dataframe
 
 
 _DEFAULTS: dict = {
