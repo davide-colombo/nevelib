@@ -13,7 +13,8 @@ from pathlib import Path
 from nevelib._common.config import load_config, merge_defaults, validate_required_keys
 from nevelib._common.fasta import iter_fasta_records, validate_fasta
 from nevelib.msa.mafft import MafftConfig, run_mafft, run_mafft_seed_and_add
-from nevelib.msa.metrics import MetricsConfig, compute_alignment_metrics, parse_fasta_alignment
+from nevelib.msa.alignment_metrics import MetricsConfig, compute_alignment_metrics
+from nevelib.msa.metrics import parse_fasta_alignment
 
 
 _DEFAULTS: dict = {
