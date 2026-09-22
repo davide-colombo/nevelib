@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 from pathlib import Path
+
+from .coverage_selection import coverage_is_unmapped, coverage_rows, select_covered_records
 import shlex
 import shutil
 import subprocess
@@ -150,12 +152,9 @@ def _write_coverage_tsv(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as handle:
         handle.write("contig_id\tlength\tbases\tmean_coverage\tpass\n")
-        for rec_id, seq in all_records:
-            if coverage is None:
-                length, bases, mean_cov = len(seq), 0, 0.0
-            else:
-                length, bases, mean_cov = coverage.get(rec_id, (len(seq), 0, 0.0))
-            passed = True if force_pass else (mean_cov >= float(min_mean_coverage))
+        for rec_id, length, bases, mean_cov, passed in coverage_rows(
+            all_records, coverage, min_mean_coverage=min_mean_coverage, force_pass=force_pass
+        ):
             handle.write(
                 f"{rec_id}\t{length}\t{bases}\t{mean_cov:.6f}\t{str(passed).lower()}\n"
             )
@@ -291,7 +290,7 @@ def filter_by_coverage(
             coverage_tsv=coverage_tsv,
         )
 
-    if (not coverage) or all(coverage.get(rec_id, (0, 0, 0.0))[2] <= 0.0 for rec_id, _seq in all_records):
+    if coverage_is_unmapped(all_records, coverage):
         LOGGER.warning("No mapped coverage detected; passing contigs through unchanged.")
         shutil.copyfile(contigs, output_fasta)
         _write_coverage_tsv(
@@ -309,11 +308,7 @@ def filter_by_coverage(
             coverage_tsv=coverage_tsv,
         )
 
-    passing_records = [
-        (rec_id, seq)
-        for rec_id, seq in all_records
-        if coverage.get(rec_id, (0, 0, 0.0))[2] >= float(cfg.min_mean_coverage)
-    ]
+    passing_records = select_covered_records(all_records, coverage, cfg.min_mean_coverage)
 
     write_fasta(iter(passing_records), output_fasta)
 
