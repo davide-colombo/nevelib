@@ -2,7 +2,7 @@
 
 nevelib is a Python 3.11+ bioinformatics library for read preparation, assembly,
 homology search, clustering, multiple sequence alignment, and mapping. nexteveApp
-depends on `nevelib>=0.6.0` and imports library modules directly, including modules
+depends on `nevelib>=0.7.0` and imports library modules directly, including modules
 whose names begin with an underscore.
 
 ## Start here

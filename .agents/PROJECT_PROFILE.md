@@ -22,7 +22,7 @@ bioinformatics executables on `PATH`; do not install them implicitly.
 
 ## Compatibility contracts
 
-nexteveApp declares `nevelib>=0.6.0` and imports FASTA, configuration, tool, BLAST,
+nexteveApp declares `nevelib>=0.7.0` and imports FASTA, configuration, tool, BLAST,
 and clustering interfaces, including modules whose names begin with an underscore.
 Preserve public APIs, exception and valid-empty behavior, and table schemas. FASTA
 record identifiers are the first whitespace-delimited header token. Pairwise mApping
