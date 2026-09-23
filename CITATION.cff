@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use nevelib in research, cite the software using this metadata."
 type: software
 title: "nevelib"
-version: "0.6.0"
+version: "0.7.0"
 authors:
   - family-names: "Colombo"
     given-names: "Davide"

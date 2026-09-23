@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "nevelib"
-version = "0.6.0"
+version = "0.7.0"
 description = "A modular bioinformatics library for genomic sequence analysis: read extraction, assembly, homology search, clustering, multiple sequence alignment, and read mapping."
 readme = "README.md"
 license = "MIT"
